@@ -1,0 +1,22 @@
+# SDK de Unitree (tienen sus propios repos)
+sdk/
+
+# Binarios compilados
+build/
+*.o
+*.a
+*.so
+
+# Entorno Python
+.venv/
+
+# Grabaciones de audio
+recordings/
+*.wav
+*.mp3
+
+# Temporales
+/tmp/
+__pycache__/
+*.pyc
+.DS_Store

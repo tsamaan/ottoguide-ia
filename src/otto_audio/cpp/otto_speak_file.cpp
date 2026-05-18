@@ -8,7 +8,7 @@
 #include "wav.hpp"
 
 #define CHUNK_SIZE 96000
-#define SAFE_VOLUME 50
+#define SAFE_VOLUME 100
 
 int main(int argc, char const *argv[]) {
     if (argc < 3) {
@@ -53,6 +53,8 @@ int main(int argc, char const *argv[]) {
         if (offset < total) unitree::common::Sleep(1);
     }
 
+    double dur = (double)total / (16000.0 * 2.0);
+    unitree::common::Sleep((int)dur + 2);
     ret = client.PlayStop("otto");
     std::cout << "[OK] PlayStop ret=" << ret << std::endl;
     return 0;

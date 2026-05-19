@@ -8,14 +8,19 @@
 #include "wav.hpp"
 
 #define CHUNK_SIZE 96000
-#define SAFE_VOLUME 100
 
 int main(int argc, char const *argv[]) {
     if (argc < 3) {
-        std::cerr << "Uso: otto_speak_file <interfaz> <archivo.wav>" << std::endl;
+        std::cerr << "Uso: otto_speak_file <interfaz> <archivo.wav> [volumen 0-100]" << std::endl;
         return 1;
     }
-    unitree::robot::ChannelFactory::Instance()->Init(0, argv[1]);
+
+    // @INPUT: interfaz, wav, volumen opcional (default 70)
+    const std::string net_iface = argv[1];
+    const std::string wav_path  = argv[2];
+    const uint8_t volume = (argc >= 4) ? (uint8_t)std::stoi(argv[3]) : 70;
+
+    unitree::robot::ChannelFactory::Instance()->Init(0, net_iface);
     unitree::robot::g1::AudioClient client;
     client.SetTimeout(10.0f);
     client.Init();
@@ -28,11 +33,11 @@ int main(int argc, char const *argv[]) {
     }
     std::cout << "[OK] Conectado. Volumen actual: " << (int)vol << std::endl;
 
-    client.SetVolume(SAFE_VOLUME);
-    std::cout << "[INFO] Volumen fijado a " << SAFE_VOLUME << std::endl;
+    client.SetVolume(volume);
+    std::cout << "[INFO] Volumen fijado a " << (int)volume << std::endl;
 
     int32_t sr = -1; int8_t ch = 0; bool ok = false;
-    auto pcm = ReadWave(argv[2], &sr, &ch, &ok);
+    auto pcm = ReadWave(wav_path, &sr, &ch, &ok);
 
     if (!ok || sr != 16000 || ch != 1) {
         std::cerr << "[ERROR] WAV invalido. Necesario: 16kHz mono 16-bit" << std::endl;
@@ -50,11 +55,13 @@ int main(int argc, char const *argv[]) {
         ret = client.PlayStream("otto", sid, chunk);
         std::cout << "[INFO] chunk=" << sz << " offset=" << offset << " ret=" << ret << std::endl;
         offset += sz;
-        if (offset < total) unitree::common::Sleep(1);
+        unitree::common::Sleep(1);
     }
 
+    // @CONTEXT: esperar duracion del audio antes de PlayStop
     double dur = (double)total / (16000.0 * 2.0);
     unitree::common::Sleep((int)dur + 2);
+
     ret = client.PlayStop("otto");
     std::cout << "[OK] PlayStop ret=" << ret << std::endl;
     return 0;

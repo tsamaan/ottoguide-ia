@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OttoGuide IA — Avances Sesión 3</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #111118;
+      --surface2: #1a1a24;
+      --border: #2a2a3a;
+      --accent: #00e5ff;
+      --accent2: #7c3aed;
+      --accent3: #10b981;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --mono: 'Space Mono', monospace;
+      --sans: 'Syne', sans-serif;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Grid background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0, 229, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 229, 255, 0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 2rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Header */
+    header {
+      padding: 4rem 0 2rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 3rem;
+    }
+
+    .header-tag {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--accent);
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .header-tag::before {
+      content: '';
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      background: var(--accent);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      50% {
+        opacity: 0.5;
+        transform: scale(0.8);
+      }
+    }
+
+    h1 {
+      font-family: var(--sans);
+      font-size: clamp(2.5rem, 5vw, 4rem);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      margin-bottom: 1rem;
+    }
+
+    h1 span {
+      color: var(--accent);
+    }
+
+    .header-meta {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+      display: flex;
+      gap: 2rem;
+      flex-wrap: wrap;
+    }
+
+    .header-meta span::before {
+      content: '// ';
+      color: var(--border);
+    }
+
+    /* Status bar */
+    .status-bar {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent3);
+      padding: 1rem 1.5rem;
+      border-radius: 4px;
+      margin-bottom: 3rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .status-bar .label {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--accent3);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+
+    .status-bar .value {
+      font-size: 0.9rem;
+      color: var(--text);
+    }
+
+    .badge {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      padding: 0.2rem 0.6rem;
+      border-radius: 2px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .badge-green {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--accent3);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .badge-blue {
+      background: rgba(0, 229, 255, 0.1);
+      color: var(--accent);
+      border: 1px solid rgba(0, 229, 255, 0.25);
+    }
+
+    .badge-warn {
+      background: rgba(245, 158, 11, 0.1);
+      color: var(--warn);
+      border: 1px solid rgba(245, 158, 11, 0.25);
+    }
+
+    .badge-red {
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--danger);
+      border: 1px solid rgba(239, 68, 68, 0.25);
+    }
+
+    /* Sections */
+    section {
+      margin-bottom: 3.5rem;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: baseline;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    h2 {
+      font-family: var(--sans);
+      font-size: 1.4rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    h3 {
+      font-family: var(--sans);
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 0.75rem;
+      margin-top: 1.5rem;
+    }
+
+    p {
+      font-size: 0.95rem;
+      line-height: 1.7;
+      color: #94a3b8;
+      margin-bottom: 0.75rem;
+    }
+
+    /* Cards grid */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1.25rem;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+
+    .card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+    }
+
+    .card.green::before {
+      background: var(--accent3);
+    }
+
+    .card.blue::before {
+      background: var(--accent);
+    }
+
+    .card.purple::before {
+      background: var(--accent2);
+    }
+
+    .card.warn::before {
+      background: var(--warn);
+    }
+
+    .card-icon {
+      font-size: 1.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .card-title {
+      font-family: var(--sans);
+      font-weight: 600;
+      font-size: 0.95rem;
+      margin-bottom: 0.5rem;
+      color: var(--text);
+    }
+
+    .card-body {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .card-body .ok {
+      color: var(--accent3);
+    }
+
+    .card-body .warn {
+      color: var(--warn);
+    }
+
+    .card-body .info {
+      color: var(--accent);
+    }
+
+    /* Timeline */
+    .timeline {
+      position: relative;
+      padding-left: 2rem;
+    }
+
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 0.4rem;
+      top: 0.5rem;
+      bottom: 0;
+      width: 1px;
+      background: var(--border);
+    }
+
+    .timeline-item {
+      position: relative;
+      margin-bottom: 1.5rem;
+    }
+
+    .timeline-item::before {
+      content: '';
+      position: absolute;
+      left: -1.65rem;
+      top: 0.4rem;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--bg);
+    }
+
+    .timeline-item.done::before {
+      background: var(--accent3);
+    }
+
+    .timeline-item.warn::before {
+      background: var(--warn);
+    }
+
+    .timeline-item.pending::before {
+      background: var(--border);
+    }
+
+    .timeline-title {
+      font-family: var(--sans);
+      font-weight: 600;
+      font-size: 0.9rem;
+      margin-bottom: 0.25rem;
+      color: var(--text);
+    }
+
+    .timeline-desc {
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    /* Code blocks */
+    .code-block {
+      background: #070710;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1rem 1.25rem;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: #a5f3fc;
+      overflow-x: auto;
+      margin: 1rem 0;
+      line-height: 1.7;
+    }
+
+    .code-block .comment {
+      color: #374151;
+    }
+
+    .code-block .keyword {
+      color: #a78bfa;
+    }
+
+    .code-block .string {
+      color: #6ee7b7;
+    }
+
+    .code-block .number {
+      color: #fde68a;
+    }
+
+    .code-block .fn {
+      color: #60a5fa;
+    }
+
+    /* Table */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.83rem;
+      margin: 1rem 0;
+    }
+
+    th {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 0.6rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid rgba(42, 42, 58, 0.5);
+      color: #94a3b8;
+      vertical-align: top;
+    }
+
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    td.mono {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--accent);
+    }
+
+    td.ok {
+      color: var(--accent3);
+    }
+
+    td.warn {
+      color: var(--warn);
+    }
+
+    td.muted {
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+
+    /* Pipeline diagram */
+    .pipeline {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      flex-wrap: wrap;
+      margin: 1.5rem 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1.5rem;
+    }
+
+    .pipe-step {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.6rem 1rem;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--text);
+      white-space: nowrap;
+      position: relative;
+    }
+
+    .pipe-step.active {
+      border-color: var(--accent3);
+      color: var(--accent3);
+    }
+
+    .pipe-step.pending {
+      border-color: var(--warn);
+      color: var(--warn);
+      opacity: 0.7;
+    }
+
+    .pipe-arrow {
+      color: var(--muted);
+      padding: 0 0.5rem;
+      font-size: 0.8rem;
+    }
+
+    /* Highlight box */
+    .highlight {
+      background: rgba(0, 229, 255, 0.05);
+      border: 1px solid rgba(0, 229, 255, 0.2);
+      border-radius: 4px;
+      padding: 1rem 1.25rem;
+      margin: 1rem 0;
+    }
+
+    .highlight-title {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--accent);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 0.5rem;
+    }
+
+    /* Footer */
+    footer {
+      padding: 2rem 0;
+      border-top: 1px solid var(--border);
+      margin-top: 4rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    footer .left {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+
+    footer .right {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    /* Scroll reveal */
+    .reveal {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="container">
+
+    <!-- Header -->
+    <header class="reveal">
+      <div class="header-tag">OttoGuide IA — Documentación Técnica</div>
+      <h1>Avances <span>Sesión 3</span></h1>
+      <div class="header-meta">
+        <span>20 de mayo de 2026</span>
+        <span>Robot: Unitree G1-EDU</span>
+        <span>Jetson Orin NX 16GB</span>
+        <span>Campus Monserrat — UADE</span>
+      </div>
+    </header>
+
+    <!-- Status bar -->
+    <div class="status-bar reveal">
+      <span class="label">Estado del MVP</span>
+      <span class="value">Pipeline conversacional funcionando en hardware real</span>
+      <span class="badge badge-green">Audio ✓</span>
+      <span class="badge badge-green">STT ✓</span>
+      <span class="badge badge-green">LLM ✓</span>
+      <span class="badge badge-green">TTS ✓</span>
+      <span class="badge badge-warn">Afinación pendiente</span>
+    </div>
+
+    <!-- Pipeline actual -->
+    <section class="reveal">
+      <div class="section-header">
+        <h2>Pipeline Actual</h2>
+        <span class="badge badge-green">operativo</span>
+      </div>
+
+      <div class="pipeline">
+        <div class="pipe-step active">Micrófonos<br>UDP Multicast</div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-step active">Whisper<br>large-v3-turbo</div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-step active">State Machine<br>wake word</div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-step active">Ollama<br>gemma3:4b otto</div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-step active">Piper TTS<br>es_MX-gevy</div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-step active">PlayStream<br>AudioClient</div>
+      </div>
+
+      <p>Todo el pipeline corre localmente en el Jetson Orin NX. Sin internet. Sin cloud. Latencia total estimada: 6–10
+        segundos por ciclo completo (transcripción ~2s + Ollama ~3–5s + TTS ~1s).</p>
+    </section>
+
+    <!-- Lo que se hizo esta sesión -->
+    <section class="reveal">
+      <div class="section-header">
+        <h2>Hitos de esta sesión</h2>
+        <span class="badge badge-blue">sesión 3</span>
+      </div>
+
+      <div class="cards">
+        <div class="card green">
+          <div class="card-icon">🎙️</div>
+          <div class="card-title">whisper.cpp con CUDA</div>
+          <div class="card-body">
+            <span class="ok">✓</span> Compilado para aarch64 Jetson Orin<br>
+            <span class="ok">✓</span> GPU: Orin compute 8.7, 15GB VRAM<br>
+            <span class="ok">✓</span> Modelo large-v3-turbo (~1.6GB)<br>
+            <span class="ok">✓</span> Español forzado (-l es)<br>
+            <span class="info">⟶</span> Encode time: ~2s por chunk de 3s<br>
+            <span class="info">⟶</span> CMake 4.3.2 via pip (sistema era 3.16)
+          </div>
+        </div>
+
+        <div class="card blue">
+          <div class="card-icon">🤖</div>
+          <div class="card-title">otto_pipeline.cpp</div>
+          <div class="card-body">
+            <span class="ok">✓</span> Captura UDP multicast (mic robot)<br>
+            <span class="ok">✓</span> Whisper API integrada (modelo en GPU)<br>
+            <span class="ok">✓</span> State machine: HIBERNACION/ESCUCHANDO<br>
+            <span class="ok">✓</span> Wake word "Hola Otto" detectado<br>
+            <span class="ok">✓</span> HTTP POST a Ollama (sockets POSIX)<br>
+            <span class="ok">✓</span> Frases aleatorias: saludos, consultas, etc.
+          </div>
+        </div>
+
+        <div class="card purple">
+          <div class="card-icon">🔊</div>
+          <div class="card-title">TTS en español nativo</div>
+          <div class="card-body">
+            <span class="ok">✓</span> Piper TTS binario aarch64<br>
+            <span class="ok">✓</span> Voz: es_MX-gevy (masculina, natural)<br>
+            <span class="ok">✓</span> Volume control: bajo/medio/alto/max<br>
+            <span class="ok">✓</span> Script otto_say.sh funcional<br>
+            <span class="ok">✓</span> PlayStream sin cortes (fix timing)
+          </div>
+        </div>
+
+        <div class="card warn">
+          <div class="card-icon">🧠</div>
+          <div class="card-title">Modelo Otto (LLM)</div>
+          <div class="card-body">
+            <span class="ok">✓</span> Ollama nativo con JetPack GPU<br>
+            <span class="ok">✓</span> gemma3:4b descargado (3.3GB)<br>
+            <span class="ok">✓</span> Modelfile con personalidad UADE<br>
+            <span class="ok">✓</span> Responde en español rioplatense<br>
+            <span class="info">⟶</span> Modelos en ~/Desktop/Ollama-Ottoguide/
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Primera prueba real -->
+    <section class="reveal">
+      <div class="section-header">
+        <h2>Primera prueba del pipeline completo</h2>
+        <span class="badge badge-blue">resultado</span>
+      </div>
+
+      <p>El 20 de mayo de 2026 se realizó la primera prueba del pipeline conversacional completo en el robot real.
+        Resultado:</p>
+
+      <div class="code-block">
+        [OTTO] Iniciando OttoGuide pipeline...
+        [OK] AudioClient conectado. Volumen: 70
+        [OK] Whisper cargado en GPU (CUDA0 — Orin 8.7)
+        [MIC] Captura UDP iniciada en 239.168.123.161:5555
+        [OTTO] Listo. Deci 'Hola Otto' para activar.
+
+        <span class="comment">// Usuario dice "Hola Otto" en voz alta</span>
+        [WHISPER] Transcribiendo (RMS=2745)...
+        [STT] "hola Otto"
+        [OTTO] <span class="keyword">Wake word</span> -> <span class="string">ESCUCHANDO</span>
+
+        <span class="comment">// Robot responde con saludo aleatorio via parlante</span>
+        [TTS] "Bienvenido a UADE! Soy Otto, tu guia del campus. Contame tu pregunta."
+      </div>
+
+      <div class="highlight">
+        <div class="highlight-title">Hito histórico</div>
+        <p style="margin:0; color: var(--text);">Otto respondió a "Hola Otto" con voz natural en español por el parlante
+          del robot. Primera vez que el sistema completo funcionó end-to-end en hardware real.</p>
+      </div>
+    </section>
+
+    <!-- Problemas encontrados y soluciones -->
+    <section class="reveal">
+      <div class="section-header">
+        <h2>Problemas encontrados y soluciones</h2>
+      </div>
+
+      <div class="timeline">
+
+        <div class="timeline-item done">
+          <div class="timeline-title">PlayStream — audio cortado</div>
+          <div class="timeline-desc">PlayStop se llamaba antes de que el robot terminara de reproducir. Fix:
+            Sleep(duración_audio + 2) antes de PlayStop.</div>
+        </div>
+
+        <div class="timeline-item done">
+          <div class="timeline-title">RMS_THRESHOLD demasiado bajo (300)</div>
+          <div class="timeline-desc">Whisper transcribía ruido ambiental como texto. Subido a 800. Ahora solo procesa
+            cuando hay voz real.</div>
+        </div>
+
+        <div class="timeline-item done">
+          <div class="timeline-title">Alucinaciones de Whisper</div>
+          <div class="timeline-desc">"de la Empresa de la Empresa..." repetido. El prompt contenía palabras que Whisper
+            predecía. Prompt simplificado a "UADE Otto OttoGuide". Filtro anti-alucinaciones agregado.</div>
+        </div>
+
+        <div class="timeline-item done">
+          <div class="timeline-title">CMake 3.16 no soportaba CUDA</div>
+          <div class="timeline-desc">CUDA requiere CMake 3.18+. Instalado CMake 4.3.2 via pip3. Compilación con
+            CUDA_ARCHITECTURES=87 (solo Orin).</div>
+        </div>
+
+        <div class="timeline-item done">
+          <div class="timeline-title">ASR del robot sin soporte español</div>
+          <div class="timeline-desc">El ASR integrado del G1 usa Whisper sin idioma forzado, con bias hacia asiático.
+            Reemplazado por whisper.cpp propio con -l es.</div>
+        </div>
+
+        <div class="timeline-item done">
+          <div class="timeline-title">Artefactos tipo *texto* en transcripción</div>
+          <div class="timeline-desc">Whisper a veces rodea texto con asteriscos (*Raping*). Filtro agrega rechazo de
+            textos con *, [, ] y textos menores a 8 caracteres.</div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Stack técnico -->
+    <section class="reveal">
+      <div class="section-header">
+        <h2>Stack técnico instalado en el Jetson</h2>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Componente</th>
+            <th>Versión / Detalle</th>
+            <th>Ruta</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>unitree_sdk2 C++</td>
+            <td class="muted">aarch64, instalado en /opt</td>
+            <td class="mono">/opt/unitree_robotics/</td>
+            <td class="ok">✓ activo</td>
+          </tr>
+          <tr>
+            <td>whisper.cpp</td>
+            <td class="muted">large-v3-turbo, CUDA 8.7</td>
+            <td class="mono">~/Desktop/whisper.cpp/</td>
+            <td class="ok">✓ activo</td>
+          </tr>
+          <tr>
+            <td>Ollama</td>
+            <td class="muted">JetPack nativo, gemma3:4b</td>
+            <td class="mono">~/Desktop/Ollama-Ottoguide/</td>
+            <td class="ok">✓ activo</td>
+          </tr>
+          <tr>
+            <td>Modelo otto</td>
+            <td class="muted">gemma3:4b + Modelfile UADE</td>
+            <td class="mono">Ollama registry local</td>
+            <td class="ok">✓ activo</td>
+          </tr>
+          <tr>
+            <td>Piper TTS</td>
+            <td class="muted">2023.11.14-2, aarch64</td>
+            <td class="mono">~/piper/</td>
+            <td class="ok">✓ activo</td>
+          </tr>
+          <tr>
+            <td>Voz es_MX-gevy</td>
+            <td class="muted">masculina, natural, high quality</td>
+            <td class="mono">~/piper/voices/</td>
+            <td class="ok">✓ activo</td>
+          </tr>
+          <tr>
+            <td>otto_pipeline</td>
+            <td class="muted">C++17, aarch64, 408 líneas</td>
+            <td class="mono">.../cpp/build/otto_pipeline</td>
+            <td class="ok">✓ compilado</td>
+          </tr>
+          <tr>
+            <td>otto_say.sh</td>
+            <td class="muted">bash wrapper TTS completo</td>
+            <td class="mono">.../scripts/otto_say.sh</td>
+            <td class="ok">✓ funcional</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Arquitectura de red -->
+    <section class="reveal">
+      <div class="section-header">
+        <h2>Arquitectura de red</h2>
+      </div>
+
+      <div class="code-block">
+        <span class="comment">// Red interna del robot</span>
+        192.168.123.100 <span class="string">Notebook desarrollo</span> (ThinkPad L14, Linux Mint 22.2)
+        192.168.123.161 <span class="string">Main Controller G1</span> (servicios: voice, motion, DDS)
+        192.168.123.164 <span class="string">Jetson Orin NX</span> (PC4 — deploy final)
+
+        <span class="comment">// Audio multicast</span>
+        239.168.123.161:5555 <span class="keyword">UDP multicast</span> PCM int16, 16kHz, mono
+
+        <span class="comment">// Servicios locales en el Jetson</span>
+        127.0.0.1:11434 <span class="keyword">Ollama API</span> POST /api/generate
+      </div>
+
+      <p><strong>Regla fija:</strong> todo código que use AudioClient debe ejecutarse desde el Jetson con interfaz eth0.
+        Desde el notebook el DDS no alcanza el servicio "voice" del main controller.</p>
+    </section>
+
+    <!-- Pendiente -->
+    <section class="reveal">
+      <div class="section-header">
+        <h2>Pendiente — próxima sesión</h2>
+        <span class="badge badge-warn">en progreso</span>
+      </div>
+
+      <div class="cards">
+        <div class="card warn">
+          <div class="card-icon">🔧</div>
+          <div class="card-title">Afinar filtros en otto_pipeline.cpp</div>
+          <div class="card-body">
+            — Mejorar detección de alucinaciones<br>
+            — Calibrar RMS_THRESHOLD con pruebas reales<br>
+            — Filtrar artefactos * [ ] ♪<br>
+            — Ajustar longitud mínima de texto válido
+          </div>
+        </div>
+
+        <div class="card warn">
+          <div class="card-icon">🔄</div>
+          <div class="card-title">Loop completo sin interrupciones</div>
+          <div class="card-body">
+            — Después de responder → seguir en ESCUCHANDO<br>
+            — Timeout 30s sin voz → HIBERNACION + despedida<br>
+            — Validar ciclo: pregunta → respuesta → nueva pregunta
+          </div>
+        </div>
+
+        <div class="card blue">
+          <div class="card-icon">🚀</div>
+          <div class="card-title">Autostart al encender el Jetson</div>
+          <div class="card-body">
+            — Crear servicio systemd para otto_pipeline<br>
+            — Iniciar automáticamente con el robot<br>
+            — Logs persistentes en /var/log/
+          </div>
+        </div>
+
+        <div class="card blue">
+          <div class="card-icon">📝</div>
+          <div class="card-title">Enriquecer el Modelfile</div>
+          <div class="card-body">
+            — Más información del campus Monserrat<br>
+            — Horarios, aulas, servicios, carreras<br>
+            — Respuestas más cortas y directas<br>
+            — Tono rioplatense más marcado
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Workflow de desarrollo -->
+    <section class="reveal">
+      <div class="section-header">
+        <h2>Workflow establecido</h2>
+      </div>
+
+      <div class="code-block">
+        <span class="comment">// Ciclo de desarrollo</span>
+        1. Editar en <span class="keyword">VS Code</span> en el notebook
+        └── ~/Escritorio/Ottoguide_IA/src/otto_audio/cpp/
+
+        2. <span class="fn">git commit</span> + <span class="fn">git push</span> desde el notebook
+
+        3. En el robot (SSH unitree@192.168.123.164):
+        └── <span class="fn">git pull</span>
+        └── cd .../cpp/build
+        └── <span class="fn">/home/unitree/.local/.../cmake ..</span>
+        └── <span class="fn">make -j4</span>
+        └── <span class="fn">./otto_pipeline</span>
+
+        <span class="comment">// Comando cmake completo (alias recomendado)</span>
+        <span class="string">/home/unitree/.local/lib/python3.8/site-packages/cmake/data/bin/cmake</span>
+      </div>
+    </section>
+
+    <!-- Criterio de MVP -->
+    <section class="reveal">
+      <div class="section-header">
+        <h2>Criterio de MVP</h2>
+        <span class="badge badge-warn">~80% completado</span>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Criterio</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Robot reproduce voz española natural por su parlante</td>
+            <td class="ok">✓ Completado</td>
+          </tr>
+          <tr>
+            <td>Voz generada desde texto con Piper (es_MX-gevy)</td>
+            <td class="ok">✓ Completado</td>
+          </tr>
+          <tr>
+            <td>PCM normalizado 16kHz mono 16-bit</td>
+            <td class="ok">✓ Completado</td>
+          </tr>
+          <tr>
+            <td>Volumen controlable por parámetro</td>
+            <td class="ok">✓ Completado</td>
+          </tr>
+          <tr>
+            <td>Wake word "Hola Otto" detectado correctamente</td>
+            <td class="ok">✓ Completado</td>
+          </tr>
+          <tr>
+            <td>Pregunta → Ollama → respuesta oral</td>
+            <td class="warn">⚠ Funciona, necesita afinación</td>
+          </tr>
+          <tr>
+            <td>Loop conversacional fluido sin interrupciones</td>
+            <td class="warn">⚠ En progreso</td>
+          </tr>
+          <tr>
+            <td>Autostart al encender el robot</td>
+            <td class="muted">— Pendiente</td>
+          </tr>
+          <tr>
+            <td>Cero comandos de movimiento ejecutados</td>
+            <td class="ok">✓ Garantizado</td>
+          </tr>
+          <tr>
+            <td>Cambio documentado y reproducible</td>
+            <td class="ok">✓ Este documento</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Footer -->
+    <footer class="reveal">
+      <div class="left">
+        <div>OttoGuide IA — Proyecto SIP Grupo 6 — UADE Monserrat</div>
+        <div style="margin-top:0.3rem">Generado: 20 de mayo de 2026</div>
+        <div style="margin-top:0.3rem">BY Teo Piroli</div>
+      </div>
+      <div class="right">
+        <span class="badge badge-green">Robot G1-EDU</span>
+        <span class="badge badge-blue">Jetson Orin NX</span>
+        <span class="badge badge-blue">CUDA 11.4</span>
+      </div>
+    </footer>
+
+  </div>
+
+  <script>
+    // Scroll reveal
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.classList.add('visible');
+        }
+      });
+    }, { threshold: 0.1 });
+
+    document.querySelectorAll('.reveal').forEach(el => {
+      observer.observe(el);
+      // Trigger immediately for visible elements
+      const rect = el.getBoundingClientRect();
+      if (rect.top < window.innerHeight) el.classList.add('visible');
+    });
+  </script>
+
+</body>
+
+</html>

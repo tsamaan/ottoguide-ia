@@ -1,0 +1,2520 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OttoGuide IA — Estado Técnico</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:         #080C16;
+  --bg2:        #0D1321;
+  --surface:    #121929;
+  --surface2:   #1C2740;
+  --surface3:   #243050;
+  --border:     #1E2D4A;
+  --border2:    #2A3F62;
+  --accent:     #0EA5E9;
+  --accent2:    #38BDF8;
+  --accent3:    #7DD3FC;
+  --green:      #10B981;
+  --green2:     #34D399;
+  --green-bg:   #022C22;
+  --amber:      #F59E0B;
+  --amber2:     #FCD34D;
+  --amber-bg:   #1C1506;
+  --red:        #EF4444;
+  --red2:       #FCA5A5;
+  --red-bg:     #1C0505;
+  --violet:     #8B5CF6;
+  --violet-bg:  #13062E;
+  --text:       #CBD5E1;
+  --text2:      #94A3B8;
+  --text3:      #4A5568;
+  --white:      #F1F5F9;
+  --mono:       'DM Mono', monospace;
+  --sans:       'Outfit', sans-serif;
+  --display:    'DM Serif Display', serif;
+  --sidebar-w:  230px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.75;
+  overflow-x: hidden;
+}
+
+/* ── GRID BACKGROUND ─────────────────────────────── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(14,165,233,.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(14,165,233,.03) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── SIDEBAR ─────────────────────────────────────── */
+.sidebar {
+  position: fixed;
+  left: 0; top: 0;
+  width: var(--sidebar-w);
+  height: 100vh;
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  overflow-y: auto;
+}
+
+.sidebar-logo {
+  padding: 26px 20px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-logo .name {
+  font-family: var(--display);
+  font-size: 20px;
+  color: var(--white);
+  letter-spacing: -.2px;
+}
+
+.sidebar-logo .name em { font-style: italic; color: var(--accent); }
+
+.sidebar-logo .sub {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  letter-spacing: .08em;
+  margin-top: 4px;
+}
+
+.sidebar-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--green);
+}
+
+.sidebar-status::before {
+  content: '';
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%,100% { opacity:1; box-shadow: 0 0 0 0 rgba(16,185,129,.4); }
+  50% { opacity:.7; box-shadow: 0 0 0 4px rgba(16,185,129,0); }
+}
+
+@keyframes pulseFast {
+  0%,100% { opacity:1; }
+  50% { opacity:.3; }
+}
+
+.nav-group-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .14em;
+  color: var(--text3);
+  text-transform: uppercase;
+  padding: 16px 20px 4px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  color: var(--text2);
+  text-decoration: none;
+  font-size: 12.5px;
+  font-weight: 400;
+  transition: all .15s;
+  border-left: 2px solid transparent;
+  position: relative;
+}
+
+.nav-item:hover, .nav-item.active {
+  color: var(--white);
+  background: rgba(14,165,233,.06);
+  border-left-color: var(--accent);
+}
+
+.nav-item .n {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text3);
+  min-width: 18px;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  line-height: 1.6;
+}
+
+/* ── MAIN ─────────────────────────────────────────── */
+.main { margin-left: var(--sidebar-w); position: relative; z-index: 1; }
+
+/* ── HERO ─────────────────────────────────────────── */
+.hero {
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  padding: 64px 64px 56px;
+  position: relative;
+  overflow: hidden;
+}
+
+.hero::before {
+  content: '';
+  position: absolute;
+  top: -100px; right: -100px;
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, rgba(14,165,233,.12) 0%, transparent 65%);
+  pointer-events: none;
+}
+
+.hero::after {
+  content: '';
+  position: absolute;
+  bottom: -80px; left: 30%;
+  width: 400px; height: 300px;
+  background: radial-gradient(circle, rgba(16,185,129,.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.hero-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 22px;
+  flex-wrap: wrap;
+}
+
+.hero-tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid;
+}
+
+.hero-tag.blue { color: var(--accent2); border-color: rgba(56,189,248,.3); background: rgba(14,165,233,.08); }
+.hero-tag.green { color: var(--green2); border-color: rgba(52,211,153,.3); background: rgba(16,185,129,.08); }
+.hero-tag.amber { color: var(--amber2); border-color: rgba(252,211,77,.3); background: rgba(245,158,11,.08); }
+
+.hero h1 {
+  font-family: var(--display);
+  font-size: 68px;
+  line-height: .95;
+  letter-spacing: -1.5px;
+  color: var(--white);
+  margin-bottom: 16px;
+}
+
+.hero h1 em { font-style: italic; color: var(--accent); }
+.hero h1 .dim { color: var(--text3); }
+
+.hero-desc {
+  font-size: 16px;
+  color: var(--text2);
+  font-weight: 300;
+  max-width: 520px;
+  margin-bottom: 40px;
+  line-height: 1.6;
+}
+
+.hero-pipeline {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-wrap: wrap;
+  margin-bottom: 40px;
+}
+
+.pipeline-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 8px 14px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text2);
+  position: relative;
+}
+
+.pipeline-step:first-child { border-radius: 6px 0 0 6px; }
+.pipeline-step:last-child { border-radius: 0 6px 6px 0; }
+
+.pipeline-step .dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+.pipeline-arrow {
+  color: var(--text3);
+  font-size: 14px;
+  padding: 0 4px;
+  margin: 0 -1px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  z-index: 1;
+  height: 36px;
+  display: flex;
+  align-items: center;
+}
+
+.hero-stats {
+  display: flex;
+  gap: 40px;
+  flex-wrap: wrap;
+}
+
+.hero-stat { display: flex; flex-direction: column; gap: 2px; }
+
+.hero-stat-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+
+.hero-stat-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--white);
+}
+
+/* ── SECTIONS ─────────────────────────────────────── */
+.section {
+  padding: 56px 64px;
+  border-bottom: 1px solid var(--border);
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity .5s ease, transform .5s ease;
+}
+
+.section.visible { opacity: 1; transform: translateY(0); }
+
+.section-header {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  margin-bottom: 36px;
+}
+
+.section-num {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+  letter-spacing: .06em;
+  padding-bottom: 4px;
+}
+
+.section-title {
+  font-family: var(--display);
+  font-size: 34px;
+  letter-spacing: -.5px;
+  color: var(--white);
+  line-height: 1;
+}
+
+.section-line {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+  margin-bottom: 6px;
+}
+
+/* ── CARDS ────────────────────────────────────────── */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color .2s, transform .2s;
+}
+
+.card:hover {
+  border-color: var(--border2);
+  transform: translateY(-2px);
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), transparent);
+}
+
+.card.green::before { background: linear-gradient(90deg, var(--green), transparent); }
+.card.amber::before { background: linear-gradient(90deg, var(--amber), transparent); }
+.card.red::before { background: linear-gradient(90deg, var(--red), transparent); }
+.card.violet::before { background: linear-gradient(90deg, var(--violet), transparent); }
+
+.card-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-bottom: 8px;
+}
+
+.card-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--white);
+  margin-bottom: 16px;
+}
+
+/* ── SPEC TABLE ───────────────────────────────────── */
+.spec-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.spec-table tr { border-bottom: 1px solid var(--border); }
+.spec-table tr:last-child { border-bottom: none; }
+
+.spec-table td {
+  padding: 8px 0;
+  vertical-align: top;
+}
+
+.spec-table td:first-child {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+  width: 130px;
+  padding-right: 16px;
+  white-space: nowrap;
+}
+
+.spec-table td:last-child { color: var(--text); }
+
+/* ── STATUS BADGE ─────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.badge.ok { background: var(--green-bg); color: var(--green2); border: 1px solid rgba(52,211,153,.2); }
+.badge.ok::before { content: '✓'; }
+.badge.pending { background: var(--amber-bg); color: var(--amber2); border: 1px solid rgba(252,211,77,.2); }
+.badge.pending::before { content: '◌'; }
+.badge.error { background: var(--red-bg); color: var(--red2); border: 1px solid rgba(252,165,165,.2); }
+.badge.error::before { content: '✕'; }
+.badge.info { background: rgba(14,165,233,.08); color: var(--accent2); border: 1px solid rgba(56,189,248,.2); }
+.badge.warning { background: var(--amber-bg); color: var(--amber2); border: 1px solid rgba(252,211,77,.2); }
+
+/* ── DATA TABLE ───────────────────────────────────── */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.data-table th {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text3);
+  text-align: left;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 400;
+}
+
+.data-table td {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  vertical-align: middle;
+}
+
+.data-table tr:last-child td { border-bottom: none; }
+
+.data-table tr:hover td { background: rgba(14,165,233,.03); }
+
+.data-table td:first-child { color: var(--text2); }
+
+.data-table .mono { font-family: var(--mono); font-size: 11.5px; color: var(--accent3); }
+
+/* ── CODE BLOCK ───────────────────────────────────── */
+.code-block {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 16px 0;
+}
+
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.code-block-lang {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.code-block-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.code-block-dots span {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+}
+
+.code-block-dots span:nth-child(1) { background: #EF4444; }
+.code-block-dots span:nth-child(2) { background: #F59E0B; }
+.code-block-dots span:nth-child(3) { background: #10B981; }
+
+.code-block pre {
+  padding: 18px 20px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.75;
+  color: var(--text2);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.code-block .kw { color: var(--accent2); }
+.code-block .str { color: var(--green2); }
+.code-block .cmt { color: var(--text3); font-style: italic; }
+.code-block .num { color: var(--amber2); }
+.code-block .ok-line { color: var(--green); }
+.code-block .err-line { color: var(--red2); }
+.code-block .info-line { color: var(--accent2); }
+
+/* ── NETWORK DIAGRAM ──────────────────────────────── */
+.network-diagram {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  flex-wrap: wrap;
+  position: relative;
+  overflow: hidden;
+}
+
+.network-diagram::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(14,165,233,.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(14,165,233,.04) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.net-node {
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: 16px 20px;
+  text-align: center;
+  position: relative;
+  z-index: 1;
+  min-width: 160px;
+  transition: border-color .2s;
+}
+
+.net-node:hover { border-color: var(--accent); }
+
+.net-node .net-ip {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.net-node .net-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--white);
+  margin-bottom: 4px;
+}
+
+.net-node .net-desc {
+  font-size: 11px;
+  color: var(--text3);
+}
+
+.net-node .net-status {
+  position: absolute;
+  top: -6px; right: -6px;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--bg2);
+}
+
+.net-node .net-status.active { background: var(--green); }
+.net-node .net-status.blocked { background: var(--red); }
+
+.net-arrow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 16px;
+  z-index: 1;
+  gap: 4px;
+}
+
+.net-arrow-line {
+  width: 48px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--border2), var(--border2));
+  position: relative;
+}
+
+.net-arrow-line::after {
+  content: '›';
+  position: absolute;
+  right: -4px;
+  top: -9px;
+  color: var(--text3);
+  font-size: 14px;
+}
+
+.net-arrow-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text3);
+  text-align: center;
+  letter-spacing: .04em;
+}
+
+.net-arrow.blocked .net-arrow-label { color: var(--red2); }
+.net-arrow.blocked .net-arrow-line { background: linear-gradient(90deg, var(--red), rgba(239,68,68,.2)); }
+.net-arrow.active .net-arrow-line { background: linear-gradient(90deg, var(--green), rgba(16,185,129,.2)); }
+
+/* ── MILESTONE LIST ───────────────────────────────── */
+.milestone-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.milestone-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 14px;
+  transition: border-color .2s;
+}
+
+.milestone-item:hover { border-color: var(--border2); }
+
+.milestone-item.done { border-left: 2px solid var(--green); }
+.milestone-item.pending { border-left: 2px solid var(--amber); }
+.milestone-item.blocked { border-left: 2px solid var(--red); }
+
+.milestone-icon {
+  font-family: var(--mono);
+  font-size: 12px;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.milestone-item.done .milestone-icon { color: var(--green); }
+.milestone-item.pending .milestone-icon { color: var(--amber); }
+.milestone-item.blocked .milestone-icon { color: var(--red); }
+
+.milestone-text {
+  font-size: 12.5px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+/* ── PHASE ROADMAP ────────────────────────────────── */
+.roadmap {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  position: relative;
+}
+
+.roadmap::before {
+  content: '';
+  position: absolute;
+  left: 64px;
+  top: 0; bottom: 0;
+  width: 1px;
+  background: var(--border);
+}
+
+.phase-row {
+  display: flex;
+  gap: 32px;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+}
+
+.phase-row:last-child { border-bottom: none; }
+
+.phase-marker {
+  flex-shrink: 0;
+  width: 128px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding-top: 4px;
+}
+
+.phase-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  border: 2px solid;
+  background: var(--bg2);
+  z-index: 1;
+  flex-shrink: 0;
+}
+
+.phase-phase {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  letter-spacing: .06em;
+}
+
+.phase-where {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text3);
+}
+
+.phase-body { flex: 1; }
+
+.phase-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--white);
+  margin-bottom: 4px;
+}
+
+.phase-goal {
+  font-size: 12.5px;
+  color: var(--text2);
+  margin-bottom: 8px;
+}
+
+.phase-criteria {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--green2);
+  margin-bottom: 8px;
+}
+
+.phase-risk {
+  font-size: 11.5px;
+  color: var(--text3);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── AUDIO API ────────────────────────────────────── */
+.api-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.api-method {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color .2s;
+}
+
+.api-method:hover { border-color: var(--border2); }
+
+.api-method-header {
+  padding: 12px 16px;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.api-method-name {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--accent2);
+  font-weight: 500;
+}
+
+.api-method-body { padding: 14px 16px; }
+
+.api-method-sig {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text2);
+  margin-bottom: 8px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.api-method-note {
+  font-size: 12px;
+  color: var(--text3);
+  line-height: 1.5;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+
+/* ── JSON VIEWER ──────────────────────────────────── */
+.json-viewer {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.json-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.json-topic {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+}
+
+.json-badge {
+  font-family: var(--mono);
+  font-size: 9px;
+  background: rgba(16,185,129,.1);
+  border: 1px solid rgba(52,211,153,.2);
+  color: var(--green2);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.json-body {
+  padding: 18px 20px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--text2);
+}
+
+.json-key { color: var(--accent3); }
+.json-val-str { color: var(--green2); }
+.json-val-num { color: var(--amber2); }
+.json-val-bool { color: var(--violet); }
+.json-comment { color: var(--text3); font-style: italic; }
+
+/* ── PIPELINE ARCH ────────────────────────────────── */
+.arch-pipeline {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 32px;
+  position: relative;
+  overflow: hidden;
+}
+
+.arch-pipeline::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(14,165,233,.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(14,165,233,.03) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.arch-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-bottom: 8px;
+  position: relative;
+  z-index: 1;
+}
+
+.arch-node {
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  padding: 10px 16px;
+  min-width: 160px;
+  position: relative;
+}
+
+.arch-node.cpp { border-top: 2px solid var(--accent); }
+.arch-node.py { border-top: 2px solid var(--green); }
+.arch-node.docker { border-top: 2px solid var(--violet); }
+.arch-node.hw { border-top: 2px solid var(--amber); }
+
+.arch-node-lang {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.arch-node.cpp .arch-node-lang { color: var(--accent); }
+.arch-node.py .arch-node-lang { color: var(--green); }
+.arch-node.docker .arch-node-lang { color: var(--violet); }
+.arch-node.hw .arch-node-lang { color: var(--amber); }
+
+.arch-node-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--white);
+}
+
+.arch-node-desc {
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 2px;
+}
+
+.arch-conn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 8px;
+  gap: 2px;
+}
+
+.arch-conn-line {
+  width: 32px;
+  height: 1px;
+  background: var(--border2);
+  position: relative;
+}
+
+.arch-conn-line::after {
+  content: '›';
+  position: absolute;
+  right: -4px;
+  top: -10px;
+  color: var(--text3);
+  font-size: 12px;
+}
+
+.arch-conn-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text3);
+  white-space: nowrap;
+}
+
+.arch-vert {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-left: 64px;
+  gap: 8px;
+  position: relative;
+  z-index: 1;
+  margin-bottom: 16px;
+}
+
+.arch-vert::before {
+  content: '';
+  position: absolute;
+  left: 16px;
+  top: 0; bottom: 0;
+  width: 1px;
+  background: var(--border2);
+}
+
+.arch-vert-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding-left: 8px;
+}
+
+.arch-vert-conn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  margin-left: 8px;
+}
+
+.arch-vert-line {
+  width: 1px;
+  height: 20px;
+  background: var(--border2);
+}
+
+.arch-vert-arrow {
+  color: var(--text3);
+  font-size: 12px;
+  line-height: 1;
+}
+
+/* ── DOCKER SERVICES ──────────────────────────────── */
+.docker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.docker-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  transition: border-color .2s;
+}
+
+.docker-card:hover { border-color: var(--violet); }
+
+.docker-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.docker-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--white);
+}
+
+.docker-card-port {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--violet);
+  background: var(--violet-bg);
+  border: 1px solid rgba(139,92,246,.2);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.docker-card-image {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  margin-bottom: 12px;
+  word-break: break-all;
+}
+
+.docker-card-config {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text2);
+  line-height: 1.6;
+}
+
+/* ── PENDING LIST ─────────────────────────────────── */
+.pending-table { width: 100%; }
+.pending-table th {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text3);
+  text-align: left;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-weight: 400;
+}
+.pending-table td {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text);
+  vertical-align: middle;
+}
+.pending-table tr:last-child td { border-bottom: none; }
+.pending-table td:first-child { color: var(--text2); width: 180px; }
+.pending-table td:nth-child(2) { width: 90px; }
+
+/* ── RESTRICT LIST ────────────────────────────────── */
+.restrict-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.restrict-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--red-bg);
+  border: 1px solid rgba(239,68,68,.15);
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 12.5px;
+}
+
+.restrict-item .ri-icon {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--red2);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.restrict-item .ri-text { color: var(--text2); line-height: 1.5; }
+
+.safe-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.safe-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--green-bg);
+  border: 1px solid rgba(16,185,129,.15);
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 12.5px;
+}
+
+.safe-item .si-icon {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--green2);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.safe-item .si-text { color: var(--text2); line-height: 1.5; }
+
+/* ── WORKFLOW STEPS ───────────────────────────────── */
+.workflow-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.workflow-step {
+  display: flex;
+  gap: 20px;
+  position: relative;
+}
+
+.workflow-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 16px;
+  top: 40px;
+  width: 1px;
+  height: calc(100% - 8px);
+  background: var(--border);
+}
+
+.workflow-step-num {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+  font-weight: 500;
+  z-index: 1;
+}
+
+.workflow-step-body {
+  padding-top: 6px;
+  padding-bottom: 24px;
+}
+
+.workflow-step-cmd {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--green2);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 12px;
+  display: inline-block;
+  margin-bottom: 4px;
+}
+
+.workflow-step-desc {
+  font-size: 12px;
+  color: var(--text3);
+  margin-top: 4px;
+}
+
+/* ── INLINE CODE ──────────────────────────────────── */
+code {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--accent3);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+/* ── SECTION DIVIDER ──────────────────────────────── */
+.session-banner {
+  background: linear-gradient(135deg, rgba(14,165,233,.08) 0%, rgba(16,185,129,.06) 100%);
+  border: 1px solid rgba(14,165,233,.2);
+  border-radius: 8px;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 32px;
+}
+
+.session-banner-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.session-banner-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--white);
+  margin-bottom: 2px;
+}
+
+.session-banner-desc {
+  font-size: 12.5px;
+  color: var(--text2);
+}
+
+/* ── SCROLLBAR ────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg2); }
+::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border2); }
+
+/* ── FIELD GRID ───────────────────────────────────── */
+.field-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.field {
+  flex: 1;
+  min-width: 200px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 16px;
+}
+.field-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--text3);
+  margin-bottom: 4px;
+}
+.field-value {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* ── COLS ─────────────────────────────────────────── */
+.cols-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.cols-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+@media (max-width: 900px) {
+  .cols-2, .cols-3 { grid-template-columns: 1fr; }
+}
+
+/* ── TOOLTIP HELPER ───────────────────────────────── */
+.two-col-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 900px) { .two-col-section { grid-template-columns: 1fr; } }
+
+/* ── MOBILE NAV ───────────────────────────────────── */
+.mobile-nav {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  z-index: 200;
+}
+.mobile-nav-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--white);
+}
+.mobile-nav-toggle .logo { font-family: var(--display); font-size: 18px; }
+.mobile-nav-links { display: none; flex-direction: column; border-top: 1px solid var(--border); }
+.mobile-nav-links.open { display: flex; }
+.mobile-nav-links a {
+  padding: 12px 20px;
+  font-size: 13px;
+  color: var(--text2);
+  text-decoration: none;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 10px;
+}
+.mobile-nav-links a .num { font-family: var(--mono); font-size: 10px; color: var(--text3); }
+
+@media (max-width: 768px) {
+  .sidebar { display: none; }
+  .main { margin-left: 0; padding-top: 52px; }
+  .mobile-nav { display: block; }
+  .hero { padding: 40px 24px 36px; }
+  .hero h1 { font-size: 44px; }
+  .section { padding: 36px 24px; }
+}
+
+.glow-text { text-shadow: 0 0 20px rgba(14,165,233,.4); }
+</style>
+</head>
+<body>
+
+<!-- ── SIDEBAR ─────────────────────────────────────── -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <div class="name">Otto<em>Guide</em> <span style="color:var(--text3);font-size:16px;">IA</span></div>
+    <div class="sub">SIP — GRUPO 6 — UADE · 2026</div>
+    <div class="sidebar-status">ESTADO TÉCNICO ACTIVO</div>
+  </div>
+
+  <div class="nav-group-label">Setup</div>
+  <a class="nav-item" href="#contexto"><span class="n">01</span>Contexto del proyecto</a>
+  <a class="nav-item" href="#hardware"><span class="n">02</span>Hardware</a>
+  <a class="nav-item" href="#entorno"><span class="n">03</span>Entorno de desarrollo</a>
+  <a class="nav-item" href="#setup"><span class="n">04</span>Estado del setup</a>
+
+  <div class="nav-group-label">SDK & Sistema</div>
+  <a class="nav-item" href="#ecosistema"><span class="n">05</span>Ecosistema Unitree</a>
+  <a class="nav-item" href="#audio-sistema"><span class="n">06</span>Sistema de audio G1</a>
+  <a class="nav-item" href="#arquitectura"><span class="n">07</span>Arquitectura de nodos</a>
+  <a class="nav-item" href="#docker"><span class="n">08</span>Servicios Docker</a>
+
+  <div class="nav-group-label">Sesión 1</div>
+  <a class="nav-item" href="#sesion1-logros"><span class="n">09</span>Hitos sesión 1</a>
+  <a class="nav-item" href="#red"><span class="n">10</span>Arquitectura de red</a>
+  <a class="nav-item" href="#bug"><span class="n">11</span>Bug & fix PlayStream</a>
+  <a class="nav-item" href="#audio-msg"><span class="n">12</span>rt/audio_msg</a>
+
+  <div class="nav-group-label">Operativo</div>
+  <a class="nav-item" href="#roadmap"><span class="n">13</span>Roadmap</a>
+  <a class="nav-item" href="#workflow"><span class="n">14</span>Workflow</a>
+  <a class="nav-item" href="#repo"><span class="n">15</span>Estado del repo</a>
+  <a class="nav-item" href="#pendiente"><span class="n">16</span>Pendiente</a>
+  <a class="nav-item" href="#restricciones"><span class="n">17</span>Restricciones</a>
+
+  <div class="sidebar-footer">
+    Unitree G1-EDU<br>
+    Jetson Orin NX 16GB<br>
+    aarch64 · Ubuntu 20.04<br>
+    <span style="color:var(--accent);margin-top:4px;display:block;">192.168.123.164</span>
+  </div>
+</nav>
+
+<!-- ── MAIN ─────────────────────────────────────────── -->
+<main class="main">
+
+<!-- ── HERO ─────────────────────────────────────────── -->
+<header class="hero">
+  <div class="hero-eyebrow">
+    <span class="hero-tag blue">UADE · SIP · GRUPO 6</span>
+    <span class="hero-tag green">Robot activo</span>
+    <span class="hero-tag amber">MVP en progreso</span>
+  </div>
+  <h1>Otto<em>Guide</em> <span class="dim">IA</span></h1>
+  <p class="hero-desc">Robot humanoide Unitree G1-EDU como guía interactivo del campus Monserrat. Estado técnico completo — setup, sesión 1 y arquitectura.</p>
+
+  <div class="hero-pipeline">
+    <div class="pipeline-step"><div class="dot"></div>"Hola Otto"</div>
+    <div class="pipeline-arrow">→</div>
+    <div class="pipeline-step"><div class="dot"></div>STT / rt/audio_msg</div>
+    <div class="pipeline-arrow">→</div>
+    <div class="pipeline-step"><div class="dot"></div>LLM · gemma4:e4b</div>
+    <div class="pipeline-arrow">→</div>
+    <div class="pipeline-step"><div class="dot"></div>Piper TTS</div>
+    <div class="pipeline-arrow">→</div>
+    <div class="pipeline-step"><div class="dot"></div>PlayStream</div>
+    <div class="pipeline-arrow">→</div>
+    <div class="pipeline-step"><div class="dot" style="background:var(--green)"></div>Parlante G1</div>
+  </div>
+
+  <div class="hero-stats">
+    <div class="hero-stat"><div class="hero-stat-label">Robot</div><div class="hero-stat-value">Unitree G1-EDU</div></div>
+    <div class="hero-stat"><div class="hero-stat-label">Computadora</div><div class="hero-stat-value">Jetson Orin NX 16GB</div></div>
+    <div class="hero-stat"><div class="hero-stat-label">LLM base</div><div class="hero-stat-value">gemma4:e4b + Modelfile</div></div>
+    <div class="hero-stat"><div class="hero-stat-label">TTS español</div><div class="hero-stat-value">Piper · es_MX-gevy-high</div></div>
+    <div class="hero-stat"><div class="hero-stat-label">SDK</div><div class="hero-stat-value">unitree_sdk2 C++</div></div>
+    <div class="hero-stat"><div class="hero-stat-label">Sesión 1</div><div class="hero-stat-value" style="color:var(--green)">Robot habló ✓</div></div>
+  </div>
+</header>
+
+<!-- ── 01 CONTEXTO ─────────────────────────────────── -->
+<section class="section" id="contexto">
+  <div class="section-header">
+    <div class="section-num">01</div>
+    <div class="section-title">Contexto del proyecto</div>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="field-row" style="margin-bottom:24px;">
+    <div class="field"><div class="field-label">Nombre</div><div class="field-value">OttoGuide IA</div></div>
+    <div class="field"><div class="field-label">Origen</div><div class="field-value">SIP — Grupo 6 — UADE</div></div>
+    <div class="field"><div class="field-label">Campus</div><div class="field-value">Monserrat, Buenos Aires</div></div>
+    <div class="field"><div class="field-label">Objetivo</div><div class="field-value">Guía interactivo del campus</div></div>
+  </div>
+
+  <div class="two-col-section">
+    <div>
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:12px;">PERSONALIDAD DEL LLM — modelo "otto"</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div class="safe-item"><div class="si-icon">◆</div><div class="si-text">Responde en <strong style="color:var(--white)">español rioplatense</strong></div></div>
+        <div class="safe-item"><div class="si-icon">◆</div><div class="si-text">Respuestas cortas — <strong style="color:var(--white)">máximo 3 oraciones</strong></div></div>
+        <div class="safe-item"><div class="si-icon">◆</div><div class="si-text">Sin emojis. Siempre menciona <code>UADE</code> como sigla</div></div>
+        <div class="safe-item"><div class="si-icon">◆</div><div class="si-text">Modelo base: <code>gemma4:e4b</code> + Modelfile de personalidad</div></div>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:12px;">PIPELINE OBJETIVO</div>
+      <div class="code-block">
+        <div class="code-block-header">
+          <span class="code-block-lang">CONVERSACIÓN</span>
+          <div class="code-block-dots"><span></span><span></span><span></span></div>
+        </div>
+        <pre>"Hola Otto"  <span class="kw">(wake word)</span>
+  → <span class="str">STT</span>        (transcripción)
+  → <span class="str">LLM local</span>  (razonamiento es_AR)
+  → <span class="str">TTS</span>        (síntesis de voz)
+  → <span class="str">PlayStream</span> (parlante del robot)</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── 02 HARDWARE ─────────────────────────────────── -->
+<section class="section" id="hardware">
+  <div class="section-header">
+    <div class="section-num">02</div>
+    <div class="section-title">Hardware</div>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="cols-2">
+    <div class="card">
+      <div class="card-label">Robot — Principal</div>
+      <div class="card-title">Unitree G1-EDU</div>
+      <table class="spec-table">
+        <tr><td>Modelo</td><td>Unitree G1-EDU (humanoide)</td></tr>
+        <tr><td>Computadora</td><td>NVIDIA Jetson Orin NX 16GB</td></tr>
+        <tr><td>OS</td><td>Ubuntu 20.04.6 LTS</td></tr>
+        <tr><td>JetPack</td><td>R35.3.1</td></tr>
+        <tr><td>Arquitectura</td><td><code>aarch64</code></td></tr>
+        <tr><td>ROS</td><td>ROS2 Foxy</td></tr>
+        <tr><td>IP</td><td><code style="color:var(--accent)">192.168.123.164</code></td></tr>
+        <tr><td>Usuario</td><td><code>unitree / 123</code></td></tr>
+        <tr><td>Interfaz SDK</td><td><code>eth0</code></td></tr>
+      </table>
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+        <span class="badge ok">aarch64 compilado</span>
+        <span class="badge ok">SDK2 instalado</span>
+        <span class="badge ok">Audio activo</span>
+      </div>
+    </div>
+
+    <div class="card green">
+      <div class="card-label">Desarrollo — Notebook</div>
+      <div class="card-title">Desktop-H3xt · ThinkPad L14 Gen 1</div>
+      <table class="spec-table">
+        <tr><td>Host</td><td>20U5004RCA</td></tr>
+        <tr><td>OS</td><td>Linux Mint 22.2 x86_64</td></tr>
+        <tr><td>Kernel</td><td>6.17.0-23-generic</td></tr>
+        <tr><td>CPU</td><td>AMD Ryzen 5 PRO 4650U (12 cores)</td></tr>
+        <tr><td>RAM</td><td>31 GB</td></tr>
+        <tr><td>Shell</td><td>zsh 5.9</td></tr>
+        <tr><td>Terminal</td><td>kitty</td></tr>
+        <tr><td>Usuario</td><td><code>h3xt</code></td></tr>
+        <tr><td>IP</td><td><code style="color:var(--green2)">192.168.123.100</code></td></tr>
+      </table>
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+        <span class="badge ok">x86_64 compilado</span>
+        <span class="badge info">Solo edición + push</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── 03 ENTORNO ──────────────────────────────────── -->
+<section class="section" id="entorno">
+  <div class="section-header">
+    <div class="section-num">03</div>
+    <div class="section-title">Entorno de desarrollo</div>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="cols-3" style="margin-bottom:24px;">
+    <div class="card red">
+      <div class="card-label">Decisión crítica</div>
+      <div class="card-title">ROS2 — Incompatibilidad</div>
+      <table class="spec-table" style="margin-top:8px;">
+        <tr><td>Notebook (Mint)</td><td><span class="badge error">Foxy NO disponible</span></td></tr>
+        <tr><td>Jetson</td><td><span class="badge ok">Foxy nativo</span></td></tr>
+        <tr><td>Jazzy/Humble</td><td><span class="badge error">Descartado</span></td></tr>
+      </table>
+      <div style="font-size:12px;color:var(--text3);margin-top:10px;">Estrategia: desarrollo sin ROS2 local en notebook.</div>
+    </div>
+
+    <div class="card amber">
+      <div class="card-label">Decisión</div>
+      <div class="card-title">SDK Python — Descartado notebook</div>
+      <div class="code-block" style="margin-top:12px;">
+        <div class="code-block-header"><span class="code-block-lang">ERROR pip</span><div class="code-block-dots"><span></span><span></span><span></span></div></div>
+        <pre><span class="err-line">cyclonedds==0.10.2
+no wheel Python 3.12
+CYCLONEDDS_HOME
+no heredado</span></pre>
+      </div>
+      <div style="font-size:12px;color:var(--text3);margin-top:8px;">Solo se instala en Jetson (Ubuntu 20.04, Python 3.8/3.10). Impacto: nulo.</div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Instalado</div>
+      <div class="card-title">SDK C++ — Ambas arquitecturas</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
+        <div style="font-family:var(--mono);font-size:11px;color:var(--text2);"><span style="color:var(--accent3)">x86_64</span> libunitree_sdk2.a → notebook</div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--text2);"><span style="color:var(--green2)">aarch64</span> libunitree_sdk2.a → Jetson</div>
+      </div>
+      <div style="font-size:12px;color:var(--text3);margin-top:10px;">CMake detecta arquitectura automáticamente.</div>
+      <div style="margin-top:10px;"><span class="badge ok">Build exitoso ambos</span></div>
+    </div>
+  </div>
+
+  <div>
+    <div style="font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:14px;">WORKFLOW DE DESARROLLO</div>
+    <div class="code-block">
+      <div class="code-block-header"><span class="code-block-lang">FLUJO</span><div class="code-block-dots"><span></span><span></span><span></span></div></div>
+      <pre><span class="info-line">Notebook</span> (editar + build x86_64)
+  │
+  ├── <span class="kw">rsync</span> src/ → /home/unitree/ottoguide/
+  │
+  └── <span class="kw">SSH</span> → Robot Jetson
+               ├── cmake + make <span class="str">(aarch64)</span>
+               └── ejecutar binarios con hardware real</pre>
+    </div>
+  </div>
+</section>
+
+<!-- ── 04 SETUP ────────────────────────────────────── -->
+<section class="section" id="setup">
+  <div class="section-header">
+    <div class="section-num">04</div>
+    <div class="section-title">Estado del setup</div>
+    <div class="section-line"></div>
+  </div>
+
+  <table class="data-table" style="margin-bottom:28px;">
+    <thead>
+      <tr><th>#</th><th>Descripción</th><th>Estado</th></tr>
+    </thead>
+    <tbody>
+      <tr><td class="mono">0.1</td><td>Deps C++ — cmake, boost, yaml-cpp, eigen3, spdlog, fmt</td><td><span class="badge ok">OK</span></td></tr>
+      <tr><td class="mono">0.2</td><td>CycloneDDS compilado</td><td><span class="badge ok">OK</span></td></tr>
+      <tr><td class="mono">0.3</td><td>SDK2 C++ compilado e instalado en <code>/opt/unitree_robotics/</code></td><td><span class="badge ok">OK</span></td></tr>
+      <tr><td class="mono">0.4</td><td>SDK2 Python en notebook</td><td><span class="badge error">Descartado</span></td></tr>
+      <tr><td class="mono">0.5</td><td>Docker ROS2 Foxy</td><td><span class="badge pending">Pendiente</span></td></tr>
+      <tr><td class="mono">0.6</td><td>Script deploy_to_robot.sh</td><td><span class="badge pending">Pendiente</span></td></tr>
+      <tr><td class="mono">—</td><td>Conectividad al robot</td><td><span class="badge ok">ping 0% loss · ~0.2ms RTT</span></td></tr>
+    </tbody>
+  </table>
+
+  <div style="font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:14px;">RUTAS DE INSTALACIÓN RELEVANTES</div>
+  <div class="code-block">
+    <div class="code-block-header"><span class="code-block-lang">FILESYSTEM</span><div class="code-block-dots"><span></span><span></span><span></span></div></div>
+    <pre><span class="info-line">/opt/unitree_robotics/</span>                       <span class="cmt">← SDK2 C++ instalado</span>
+  include/unitree/robot/g1/audio/
+    <span class="str">g1_audio_client.hpp</span>                      <span class="cmt">← API AudioClient</span>
+    <span class="str">g1_audio_api.hpp</span>                         <span class="cmt">← IDs de API y parámetros</span>
+  lib/
+    libunitree_sdk2.a
+    libddsc.so / libddscxx.so
+
+<span class="info-line">~/Escritorio/Ottoguide_IA/</span>
+  cyclonedds/install/                        <span class="cmt">← CycloneDDS compilado</span>
+  sdk/unitree_sdk2/
+    example/g1/audio/
+      <span class="str">g1_audio_client_example.cpp</span>
+      <span class="str">wav.hpp</span>                              <span class="cmt">← lector/escritor WAV</span>
+    bin/
+      <span class="ok-line">g1_audio_client_example</span>             <span class="cmt">← binario ya compilado</span>
+
+<span class="info-line">~/Desktop/teo_Ottoguide_IA/ottoguide-ia/</span>    <span class="cmt">← repo del proyecto</span>
+  src/otto_audio/cpp/
+    build/
+      <span class="ok-line">otto_speak_file</span>                      <span class="cmt">← binario del proyecto</span></pre>
+  </div>
+</section>
+
+<!-- ── 05 ECOSISTEMA ───────────────────────────────── -->
+<section class="section" id="ecosistema">
+  <div class="section-header">
+    <div class="section-num">05</div>
+    <div class="section-title">Ecosistema Unitree</div>
+    <div class="section-line"></div>
+  </div>
+
+  <div style="margin-bottom:20px;font-size:13px;color:var(--text2);">
+    Organización GitHub <code>unitreerobotics</code> — 43 repos públicos. Protocolo unificado: <code>CycloneDDS 0.10.2</code> sobre UDP.
+  </div>
+
+  <div class="code-block" style="margin-bottom:24px;">
+    <div class="code-block-header"><span class="code-block-lang">PROTOCOLO</span><div class="code-block-dots"><span></span><span></span><span></span></div></div>
+    <pre><span class="info-line">SDK2</span> <span class="kw">←→</span> <span class="str">CycloneDDS 0.10.2</span> <span class="kw">←→</span> <span class="info-line">ROS2 Foxy</span>
+<span class="cmt">ROS2 y SDK2 son directamente compatibles — mismo DDS</span></pre>
+  </div>
+
+  <table class="data-table">
+    <thead><tr><th>Repositorio</th><th>Rol</th><th>Uso</th></tr></thead>
+    <tbody>
+      <tr><td><code>unitree_sdk2</code></td><td>SDK C++ principal. Comunicación DDS. AudioClient.</td><td><span class="badge ok">Core — activo</span></td></tr>
+      <tr><td><code>unitree_sdk2_python</code></td><td>Wrapper Python. Solo en Jetson.</td><td><span class="badge info">Solo Jetson</span></td></tr>
+      <tr><td><code>unitree_ros2</code></td><td>Integración ROS2. DDS compartido con SDK2.</td><td><span class="badge pending">Referencia</span></td></tr>
+      <tr><td><code>unitree_mujoco</code></td><td>Simulador para sim2real.</td><td><span class="badge pending">Etapas futuras</span></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ── 06 AUDIO SISTEMA ────────────────────────────── -->
+<section class="section" id="audio-sistema">
+  <div class="section-header">
+    <div class="section-num">06</div>
+    <div class="section-title">Sistema de audio G1</div>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="cols-2" style="margin-bottom:28px;">
+    <div>
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:12px;">MICRÓFONO — captura de audio</div>
+      <div class="card amber" style="margin-bottom:0;">
+        <div style="font-size:13px;color:var(--amber2);font-weight:600;margin-bottom:10px;">⚠ El audio del micrófono NO va por DDS</div>
+        <div style="font-size:12.5px;color:var(--text2);margin-bottom:12px;">Llega por <strong style="color:var(--white)">UDP multicast</strong>.</div>
+        <table class="spec-table">
+          <tr><td>Grupo multicast</td><td><code>239.168.123.161</code></td></tr>
+          <tr><td>Puerto</td><td><code>5555</code></td></tr>
+          <tr><td>Formato</td><td>PCM int16, 16kHz, mono, raw</td></tr>
+          <tr><td>Recepción</td><td><code>recvfrom()</code> en socket UDP</td></tr>
+          <tr><td>Chunk size</td><td><code>5120 bytes</code></td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:12px;">ASR INTEGRADO — rt/audio_msg</div>
+      <div class="card green" style="margin-bottom:0;">
+        <div style="font-size:13px;color:var(--green2);font-weight:600;margin-bottom:10px;">✓ rt/audio_msg publica texto, no audio</div>
+        <div style="font-size:12.5px;color:var(--text2);margin-bottom:12px;">El robot tiene <strong style="color:var(--white)">ASR Whisper integrado</strong>. Soporta español. <strong style="color:var(--amber2)">Whisper puede eliminarse del MVP.</strong></div>
+        <div class="code-block" style="margin:0;">
+          <div class="code-block-header"><span class="code-block-lang">C++</span><div class="code-block-dots"><span></span><span></span><span></span></div></div>
+          <pre><span class="cmt">// Tipo: std_msgs::msg::dds_::String_</span>
+ChannelSubscriber subscriber(
+  <span class="str">"rt/audio_msg"</span>);
+subscriber.InitChannel(asr_handler);
+<span class="cmt">// callback: resMsg->data() → JSON</span></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:14px;">API AUDIOCLIENT — FIRMAS EXACTAS</div>
+  <div class="api-grid">
+    <div class="api-method">
+      <div class="api-method-header"><span class="api-method-name">GetVolume / SetVolume</span><span class="badge ok">ret=0</span></div>
+      <div class="api-method-body">
+        <div class="api-method-sig">int32_t GetVolume(uint8_t &amp;volume);
+int32_t SetVolume(uint8_t volume); // 0–100</div>
+        <div class="api-method-note">Verificar conectividad con <code>GetVolume</code> antes de reproducir. Máximo 50 durante pruebas.</div>
+      </div>
+    </div>
+    <div class="api-method">
+      <div class="api-method-header"><span class="api-method-name">TtsMaker</span><span class="badge warning">Solo CN/EN</span></div>
+      <div class="api-method-body">
+        <div class="api-method-sig">int32_t TtsMaker(
+  const std::string &amp;text,
+  int32_t speaker_id);
+// 0 → chino  |  1 → inglés</div>
+        <div class="api-method-note">NO soporta español. Para español: <code>Piper + PlayStream</code>.</div>
+      </div>
+    </div>
+    <div class="api-method">
+      <div class="api-method-header"><span class="api-method-name">PlayStream</span><span class="badge ok">activo</span></div>
+      <div class="api-method-body">
+        <div class="api-method-sig">int32_t PlayStream(
+  std::string app_name,
+  std::string stream_id,
+  std::vector&lt;uint8_t&gt; pcm_data);
+// PCM: 16kHz·mono·16-bit·LE
+// Chunks: 96000 bytes (~3s)
+// Sleep(1) entre chunks</div>
+        <div class="api-method-note">stream_id = timestamp en ms como string.</div>
+      </div>
+    </div>
+    <div class="api-method">
+      <div class="api-method-header"><span class="api-method-name">PlayStop</span><span class="badge warning">Bug doc oficial</span></div>
+      <div class="api-method-body">
+        <div class="api-method-sig">int32_t PlayStop(std::string app_name);
+// ⚠ toma app_name, NO stream_id
+// Bug en ejemplo oficial: pasa
+// stream_id en lugar de app_name</div>
+        <div class="api-method-note">Llamar DESPUÉS de <code>Sleep(duration + 1)</code>.</div>
+      </div>
+    </div>
+    <div class="api-method">
+      <div class="api-method-header"><span class="api-method-name">LedControl</span><span class="badge info">disponible</span></div>
+      <div class="api-method-body">
+        <div class="api-method-sig">int32_t LedControl(
+  uint8_t R,
+  uint8_t G,
+  uint8_t B);</div>
+        <div class="api-method-note">Control de LEDs RGB del robot.</div>
+      </div>
+    </div>
+    <div class="api-method">
+      <div class="api-method-header"><span class="api-method-name">Inicialización</span><span class="badge info">obligatoria</span></div>
+      <div class="api-method-body">
+        <div class="api-method-sig">ChannelFactory::Instance()
+  ->Init(0, "eth0");
+AudioClient client;
+client.SetTimeout(10.0f);
+client.Init();</div>
+        <div class="api-method-note">Siempre ejecutar <strong>desde el Jetson</strong> con interfaz <code>eth0</code>.</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:24px;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:14px;">IDs DE API</div>
+  <div class="code-block">
+    <div class="code-block-header"><span class="code-block-lang">g1_audio_api.hpp</span><div class="code-block-dots"><span></span><span></span><span></span></div></div>
+    <pre><span class="kw">const int32_t</span> ROBOT_API_ID_AUDIO_TTS        = <span class="num">1001</span>;
+<span class="kw">const int32_t</span> ROBOT_API_ID_AUDIO_ASR        = <span class="num">1002</span>;
+<span class="kw">const int32_t</span> ROBOT_API_ID_AUDIO_START_PLAY = <span class="num">1003</span>;
+<span class="kw">const int32_t</span> ROBOT_API_ID_AUDIO_STOP_PLAY  = <span class="num">1004</span>;
+<span class="kw">const int32_t</span> ROBOT_API_ID_AUDIO_GET_VOLUME = <span class="num">1005</span>;
+<span class="kw">const int32_t</span> ROBOT_API_ID_AUDIO_SET_VOLUME = <span class="num">1006</span>;
+<span class="kw">const int32_t</span> ROBOT_API_ID_AUDIO_SET_RGB_LED= <span class="num">1010</span>;
+<span class="kw">const std::string</span> AUDIO_SERVICE_NAME        = <span class="str">"voice"</span>;
+<span class="kw">const std::string</span> AUDIO_API_VERSION         = <span class="str">"1.0.0.0"</span>;</pre>
+  </div>
+</section>
+
+<!-- ── 07 ARQUITECTURA ─────────────────────────────── -->
+<section class="section" id="arquitectura">
+  <div class="section-header">
+    <div class="section-num">07</div>
+    <div class="section-title">Arquitectura de nodos</div>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="arch-pipeline" style="margin-bottom:24px;">
+    <div style="font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);margin-bottom:20px;position:relative;z-index:1;">PIPELINE REAL — POST-ANÁLISIS SDK · ROBOT G1-EDU (JETSON)</div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;position:relative;z-index:1;">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div class="arch-node hw"><div class="arch-node-lang">Hardware</div><div class="arch-node-name">Micrófonos</div><div class="arch-node-desc">UDP multicast 239.168.123.161:5555</div></div>
+        <div class="arch-conn"><div class="arch-conn-line"></div><div class="arch-conn-label">PCM int16 16kHz</div></div>
+        <div class="arch-node cpp"><div class="arch-node-lang">C++</div><div class="arch-node-name">otto_audio_capture</div><div class="arch-node-desc">recvfrom() UDP socket</div></div>
+      </div>
+
+      <div style="margin-left:60px;display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;">
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text3);">Opción A (opcional)</div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--text2);background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:6px 10px;"><code>/otto/audio_raw</code> → Whisper</div>
+        </div>
+        <div style="padding-top:18px;color:var(--text3);font-size:18px;">|</div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--green2);">Opción B — MVP (activa)</div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--text2);background:rgba(16,185,129,.06);border:1px solid rgba(52,211,153,.2);border-radius:4px;padding:6px 10px;"><code>rt/audio_msg</code> → ASR integrado → texto</div>
+        </div>
+      </div>
+
+      <div style="margin-left:60px;display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--text2);">
+        <span style="color:var(--text3)">↓</span>
+        <code>/otto/stt_text</code>
+        <span style="color:var(--text3)">std_msgs/String</span>
+      </div>
+
+      <div style="margin-left:60px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div class="arch-node py"><div class="arch-node-lang">Python</div><div class="arch-node-name">otto_brain</div><div class="arch-node-desc">Wake word · LLM · estado</div></div>
+        <div class="arch-conn">
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);">wake word</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);">"Hola Otto"</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);">Levenshtein ≤2</div>
+        </div>
+        <div class="arch-node docker"><div class="arch-node-lang">Docker</div><div class="arch-node-name">Ollama</div><div class="arch-node-desc">localhost:11434 · modelo otto</div></div>
+      </div>
+
+      <div style="margin-left:60px;display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--text2);">
+        <span style="color:var(--text3)">↓</span>
+        <code>/otto/llm_response</code>
+        <span style="color:var(--text3)">std_msgs/String</span>
+      </div>
+
+      <div style="margin-left:60px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div class="arch-node cpp"><div class="arch-node-lang">C++</div><div class="arch-node-name">otto_tts_bridge</div><div class="arch-node-desc">Piper → WAV → PlayStream</div></div>
+        <div class="arch-conn"><div class="arch-conn-line"></div><div class="arch-conn-label">PCM 16kHz</div></div>
+        <div class="arch-node docker"><div class="arch-node-lang">Docker</div><div class="arch-node-name">Piper TTS</div><div class="arch-node-desc">es_MX-gevy-high.onnx</div></div>
+        <div class="arch-conn"><div class="arch-conn-line"></div><div class="arch-conn-label">PlayStream</div></div>
+        <div class="arch-node hw"><div class="arch-node-lang">Hardware</div><div class="arch-node-name">Parlante G1</div><div class="arch-node-desc">AudioClient SDK2</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:14px;">TÓPICOS ROS2</div>
+  <table class="data-table">
+    <thead><tr><th>Tópico</th><th>Tipo</th><th>Productor</th><th>Consumidor</th></tr></thead>
+    <tbody>
+      <tr><td><code>/otto/audio_raw</code></td><td class="mono">UInt8MultiArray</td><td>otto_audio_capture</td><td>otto_stt (opcional)</td></tr>
+      <tr><td><code>/otto/stt_text</code></td><td class="mono">String</td><td>otto_audio_capture / otto_stt</td><td>otto_brain</td></tr>
+      <tr><td><code>/otto/llm_response</code></td><td class="mono">String</td><td>otto_brain</td><td>otto_tts_bridge</td></tr>
+      <tr><td><code>/otto/state</code></td><td class="mono">String</td><td>otto_brain</td><td>monitoreo</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ── 08 DOCKER ───────────────────────────────────── -->
+<section class="section" id="docker">
+  <div class="section-header">
+    <div class="section-num">08</div>
+    <div class="section-title">Servicios Docker</div>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="docker-grid">
+    <div class="docker-card">
+      <div class="docker-card-head">
+        <div class="docker-card-name">Whisper STT</div>
+        <div class="docker-card-port">:9000</div>
+      </div>
+      <div class="docker-card-image">onerahmet/openai-whisper-asr-webservice</div>
+      <div class="docker-card-config">ASR_MODEL=medium<br>ASR_ENGINE=faster_whisper</div>
+      <div style="margin-top:10px;"><span class="badge info">Opcional — ASR integrado disponible</span></div>
+    </div>
+
+    <div class="docker-card">
+      <div class="docker-card-head">
+        <div class="docker-card-name">Ollama LLM</div>
+        <div class="docker-card-port">:11434</div>
+      </div>
+      <div class="docker-card-image">ollama/ollama</div>
+      <div class="docker-card-config">modelo: otto<br>base: gemma4:e4b<br>+ Modelfile personalidad</div>
+      <div style="margin-top:10px;"><span class="badge pending">Docker pendiente</span></div>
+    </div>
+
+    <div class="docker-card">
+      <div class="docker-card-head">
+        <div class="docker-card-name">Piper TTS</div>
+        <div class="docker-card-port">docker exec</div>
+      </div>
+      <div class="docker-card-image">build local — services/tts/Dockerfile</div>
+      <div class="docker-card-config">voz: es_MX-gevy-high.onnx<br>NO usar wyoming service<br>Ejecutar: tail -f /dev/null</div>
+      <div style="margin-top:10px;"><span class="badge pending">Docker pendiente</span></div>
+    </div>
+  </div>
+
+  <div class="code-block" style="margin-top:20px;">
+    <div class="code-block-header"><span class="code-block-lang">bash — crear modelo otto</span><div class="code-block-dots"><span></span><span></span><span></span></div></div>
+    <pre><span class="kw">docker exec</span> -it ottoguide-llm ollama pull <span class="str">gemma4:e4b</span>
+<span class="kw">docker cp</span> services/llm/Modelfile ottoguide-llm:/tmp/Modelfile
+<span class="kw">docker exec</span> -it ottoguide-llm ollama create <span class="str">otto</span> -f /tmp/Modelfile</pre>
+  </div>
+</section>
+
+<!-- ── 09 SESIÓN 1 HITOS ───────────────────────────── -->
+<section class="section" id="sesion1-logros">
+  <div class="session-banner">
+    <div class="session-banner-icon">⚡</div>
+    <div>
+      <div class="session-banner-title">Sesión 1 — Primera prueba con hardware real</div>
+      <div class="session-banner-desc">Compilación en Jetson, primer contacto con hardware de audio, hallazgos del SDK, bugs encontrados y estado actual.</div>
+    </div>
+  </div>
+
+  <div class="section-header">
+    <div class="section-num">09</div>
+    <div class="section-title">Hitos Sesión 1</div>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="milestone-grid">
+    <div class="milestone-item done"><div class="milestone-icon">✓</div><div class="milestone-text">SDK2 C++ compilado en notebook (x86_64)</div></div>
+    <div class="milestone-item done"><div class="milestone-icon">✓</div><div class="milestone-text">SDK2 C++ compilado en Jetson (aarch64)</div></div>
+    <div class="milestone-item done"><div class="milestone-icon">✓</div><div class="milestone-text"><code>otto_speak_file</code> compilado en Jetson</div></div>
+    <div class="milestone-item done"><div class="milestone-icon">✓</div><div class="milestone-text"><code>GetVolume</code> responde desde Jetson — ret=0</div></div>
+    <div class="milestone-item done"><div class="milestone-icon">✓</div><div class="milestone-text"><code>SetVolume</code> funciona — ret=0</div></div>
+    <div class="milestone-item done"><div class="milestone-icon">✓</div><div class="milestone-text"><code>PlayStream</code> envía datos sin error — ret=0</div></div>
+    <div class="milestone-item done"><div class="milestone-icon">✓</div><div class="milestone-text">Robot habló por el parlante (via TtsMaker)</div></div>
+    <div class="milestone-item done"><div class="milestone-icon">✓</div><div class="milestone-text">Micrófono captura audio — ASR activo</div></div>
+    <div class="milestone-item done"><div class="milestone-icon">✓</div><div class="milestone-text">Formato completo de <code>rt/audio_msg</code> conocido</div></div>
+    <div class="milestone-item done"><div class="milestone-icon">✓</div><div class="milestone-text">Repo GitHub privado creado y sincronizado</div></div>
+  </div>
+
+  <div style="margin-top:28px;">
+    <div style="font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:14px;">SALIDA DEL PRIMER TEST EXITOSO — Jetson</div>
+    <div class="code-block">
+      <div class="code-block-header"><span class="code-block-lang">TERMINAL — Jetson 192.168.123.164</span><div class="code-block-dots"><span></span><span></span><span></span></div></div>
+      <pre><span class="ok-line">[OK] Conectado. Volumen actual: 100</span>
+<span class="info-line">[INFO] Volumen fijado a 50</span>
+<span class="ok-line">[OK] WAV: 64000 bytes | 16000Hz | mono</span>
+<span class="info-line">[INFO] Reproduciendo stream=1778803883837</span>
+<span class="info-line">[INFO] chunk=64000 offset=0 ret=0</span>
+<span class="ok-line">[OK] PlayStop ret=0</span></pre>
+    </div>
+  </div>
+
+  <div style="margin-top:20px;">
+    <div style="font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:14px;">DESDE NOTEBOOK — FALLO ESPERADO</div>
+    <div class="code-block">
+      <div class="code-block-header"><span class="code-block-lang">TERMINAL — Notebook 192.168.123.100</span><div class="code-block-dots"><span></span><span></span><span></span></div></div>
+      <pre><span class="err-line">[ERROR] GetVolume ret=3104</span>
+<span class="cmt">// ret=3104 = timeout DDS
+// El servicio "voice" corre en 192.168.123.161 (main controller)
+// SDK diseñado para correr SOLO desde el Jetson</span></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ── 10 RED ───────────────────────────────────────── -->
+<section class="section" id="red">
+  <div class="section-header">
+    <div class="section-num">10</div>
+    <div class="section-title">Arquitectura de red</div>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="network-diagram" style="margin-bottom:24px;">
+    <div class="net-node" style="border-top:2px solid var(--accent);">
+      <div class="net-status active" style="animation:pulse 2s infinite;"></div>
+      <div class="net-ip">192.168.123.100</div>
+      <div class="net-name">Notebook</div>
+      <div class="net-desc">Desktop-H3xt<br>Desarrollo · edición · push</div>
+    </div>
+
+    <div class="net-arrow blocked">
+      <div class="net-arrow-line"></div>
+      <div class="net-arrow-label">AudioClient<br>✕ ret=3104</div>
+    </div>
+
+    <div class="net-node" style="border-top:2px solid var(--amber);">
+      <div class="net-status active" style="animation:pulse 2s infinite;background:var(--amber);"></div>
+      <div class="net-ip">192.168.123.161</div>
+      <div class="net-name">Main Controller</div>
+      <div class="net-desc">Servicios: voice<br>motion · etc.</div>
+    </div>
+
+    <div class="net-arrow active">
+      <div class="net-arrow-line"></div>
+      <div class="net-arrow-label">SDK2 · DDS<br>✓ eth0</div>
+    </div>
+
+    <div class="net-node" style="border-top:2px solid var(--green);">
+      <div class="net-status active" style="animation:pulse 2s infinite;"></div>
+      <div class="net-ip">192.168.123.164</div>
+      <div class="net-name">Jetson Orin NX</div>
+      <div class="net-desc">PC4 — AudioClient<br>Llamar SDK2 desde aquí</div>
+    </div>
+  </div>
+
+  <div class="restrict-item" style="background:var(--amber-bg);border-color:rgba(245,158,11,.2);">
+    <div class="ri-icon" style="color:var(--amber2);">⚡</div>
+    <div class="ri-text" style="color:var(--text2);">
+      <strong style="color:var(--white);">Regla fija:</strong> Todo código que use <code>AudioClient</code> (o cualquier cliente del SDK2) debe ejecutarse <strong style="color:var(--amber2);">desde el Jetson</strong> con interfaz <code>eth0</code>. El notebook se usa solo para editar, push y compilar via SSH.
+    </div>
+  </div>
+</section>
+
+<!-- ── 11 BUG ───────────────────────────────────────── -->
+<section class="section" id="bug">
+  <div class="section-header">
+    <div class="section-num">11</div>
+    <div class="section-title">Bug &amp; fix PlayStream</div>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="two-col-section">
+    <div>
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--red2);margin-bottom:12px;">BUG IDENTIFICADO</div>
+      <div class="card red">
+        <div style="font-size:13px;font-weight:600;color:var(--red2);margin-bottom:8px;">PlayStream sin audio</div>
+        <div style="font-size:12.5px;color:var(--text2);margin-bottom:12px;"><strong style="color:var(--white);">Síntoma:</strong> <code>PlayStream ret=0</code> y <code>PlayStop ret=0</code> pero el robot no emite sonido.</div>
+        <div style="font-size:12.5px;color:var(--text2);"><strong style="color:var(--white);">Causa:</strong> <code>PlayStop("otto")</code> se llama <strong style="color:var(--red2);">inmediatamente</strong> después de enviar el último chunk de PCM, antes de que el robot termine de reproducirlo. El audio se cancela antes de escucharse.</div>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--green2);margin-bottom:12px;">FIX IMPLEMENTADO</div>
+      <div class="code-block">
+        <div class="code-block-header"><span class="code-block-lang">C++ — otto_speak_file.cpp</span><div class="code-block-dots"><span></span><span></span><span></span></div></div>
+        <pre><span class="cmt">// duracion = bytes / (16000 * 2) + 1s</span>
+<span class="kw">double</span> duration_s =
+  (<span class="kw">double</span>)total / (<span class="num">16000.0</span> * <span class="num">2.0</span>);
+
+unitree::common::Sleep(
+  (<span class="kw">int</span>)duration_s + <span class="num">1</span>);
+
+ret = client.<span class="info-line">PlayStop</span>(<span class="str">"otto"</span>);</pre>
+      </div>
+      <div style="margin-top:10px;"><span class="badge pending">Escrito y pusheado — pendiente compilar en Jetson</span></div>
+    </div>
+  </div>
+
+  <div style="margin-top:20px;">
+    <div style="font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:12px;">MECANISMO ALTERNATIVO — play_state via rt/audio_msg</div>
+    <div class="two-col-section">
+      <div class="json-viewer">
+        <div class="json-header">
+          <span class="json-topic">rt/audio_msg — play_state</span>
+          <span class="json-badge">sincronización</span>
+        </div>
+        <div class="json-body">
+<span class="json-key">"play_state"</span>: <span class="json-val-num">1</span>  <span class="json-comment">← audio comenzó</span>
+<span class="json-key">"play_state"</span>: <span class="json-val-num">0</span>  <span class="json-comment">← audio terminó</span>
+        </div>
+      </div>
+      <div style="font-size:12.5px;color:var(--text2);padding-top:8px;line-height:1.7;">
+        Este mecanismo permite <strong style="color:var(--white);">sincronizar reproducción</strong> en lugar de usar <code>Sleep</code> fijo. El suscriptor a <code>rt/audio_msg</code> puede detectar cuándo el parlante terminó de reproducir y proceder a escuchar al usuario.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── 12 rt/audio_msg ─────────────────────────────── -->
+<section class="section" id="audio-msg">
+  <div class="section-header">
+    <div class="section-num">12</div>
+    <div class="section-title">rt/audio_msg — hallazgos</div>
+    <div class="section-line"></div>
+  </div>
+
+  <div style="margin-bottom:20px;font-size:13px;color:var(--text2);">
+    Durante la ejecución del ejemplo oficial, los micrófonos captaron ruido ambiental y el ASR lo transcribió en tiempo real. El tópico publica <strong style="color:var(--white);">JSON rico</strong>, no texto plano.
+  </div>
+
+  <div class="two-col-section" style="margin-bottom:24px;">
+    <div class="json-viewer">
+      <div class="json-header">
+        <span class="json-topic">rt/audio_msg — ejemplo real capturado</span>
+        <span class="json-badge">sesión 1</span>
+      </div>
+      <div class="json-body">{
+  <span class="json-key">"index"</span>:      <span class="json-val-num">13</span>,
+  <span class="json-key">"timestamp"</span>:  <span class="json-val-num">1778803269435</span>,
+  <span class="json-key">"type"</span>:       <span class="json-val-num">0</span>,
+  <span class="json-key">"text"</span>:       <span class="json-val-str">"ですよ。"</span>,
+  <span class="json-key">"angle"</span>:      <span class="json-val-num">0</span>,
+  <span class="json-key">"speaker_id"</span>: <span class="json-val-num">0</span>,
+  <span class="json-key">"emotion"</span>:    <span class="json-val-str">"&lt;|EMO_UNKNOWN|&gt;"</span>,
+  <span class="json-key">"confidence"</span>: <span class="json-val-num">0.500000</span>,
+  <span class="json-key">"language"</span>:   <span class="json-val-str">"&lt;|ja|&gt;"</span>,
+  <span class="json-key">"is_final"</span>:   <span class="json-val-bool">false</span>
+}</div>
+    </div>
+
+    <div>
+      <table class="data-table">
+        <thead><tr><th>Campo</th><th>Tipo</th><th>Descripción</th></tr></thead>
+        <tbody>
+          <tr><td><code>index</code></td><td class="mono">int</td><td>Número de secuencia</td></tr>
+          <tr><td><code>timestamp</code></td><td class="mono">long</td><td>Timestamp en ms</td></tr>
+          <tr><td><code>text</code></td><td class="mono">string</td><td>Texto transcripto</td></tr>
+          <tr><td><code>angle</code></td><td class="mono">float</td><td>Ángulo del hablante</td></tr>
+          <tr><td><code>speaker_id</code></td><td class="mono">int</td><td>ID del hablante</td></tr>
+          <tr><td><code>emotion</code></td><td class="mono">string</td><td>Emoción (Whisper tag)</td></tr>
+          <tr><td><code>confidence</code></td><td class="mono">float</td><td>Confianza 0–1</td></tr>
+          <tr><td><code>language</code></td><td class="mono">string</td><td>Idioma Whisper</td></tr>
+          <tr><td><code>is_final</code></td><td class="mono">bool</td><td>Final o parcial</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div style="font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:12px;">CÓDIGOS DE IDIOMA WHISPER DETECTADOS</div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;">
+    <span class="badge info"><code>&lt;|yue|&gt;</code> Cantonés</span>
+    <span class="badge info"><code>&lt;|ja|&gt;</code> Japonés</span>
+    <span class="badge info"><code>&lt;|en|&gt;</code> Inglés</span>
+    <span class="badge ok"><code>&lt;|es|&gt;</code> Español ← esperado para Otto</span>
+    <span class="badge info"><code>&lt;|zh|&gt;</code> Chino mandarín</span>
+  </div>
+
+  <div class="card green">
+    <div style="font-size:13px;font-weight:600;color:var(--green2);margin-bottom:6px;">Implicación clave para el pipeline</div>
+    <div style="font-size:12.5px;color:var(--text2);">El ASR integrado del robot <strong style="color:var(--white);">ya funciona y está activo</strong>. Es Whisper-based y soporta español. El nodo STT puede suscribirse directamente a <code>rt/audio_msg</code> usando el subscriber de tipo <code>std_msgs::msg::dds_::String_</code>. El campo <code>m→data()</code> contiene el JSON completo para parsear con nlohmann/json.</div>
+  </div>
+</section>
+
+<!-- ── 13 ROADMAP ──────────────────────────────────── -->
+<section class="section" id="roadmap">
+  <div class="section-header">
+    <div class="section-num">13</div>
+    <div class="section-title">Roadmap de implementación</div>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="roadmap">
+    <div class="phase-row">
+      <div class="phase-marker">
+        <div class="phase-dot" style="border-color:var(--accent);background:var(--accent);"></div>
+        <div class="phase-phase">Fase 0</div>
+        <div class="phase-where">Notebook</div>
+      </div>
+      <div class="phase-body">
+        <div class="phase-title">Setup SDK C++ + CycloneDDS</div>
+        <div class="phase-criteria">✓ libunitree_sdk2.a presente</div>
+        <div class="phase-risk">Riesgo: Bajo</div>
+        <div style="margin-top:6px;"><span class="badge ok">COMPLETADO</span></div>
+      </div>
+    </div>
+
+    <div class="phase-row">
+      <div class="phase-marker">
+        <div class="phase-dot" style="border-color:var(--accent);background:var(--accent);"></div>
+        <div class="phase-phase">Fase 1</div>
+        <div class="phase-where">Robot SSH</div>
+      </div>
+      <div class="phase-body">
+        <div class="phase-title">Auditoría read-only</div>
+        <div class="phase-criteria">✓ Estado conocido</div>
+        <div class="phase-risk">Riesgo: Bajo</div>
+        <div style="margin-top:6px;"><span class="badge ok">COMPLETADO</span></div>
+      </div>
+    </div>
+
+    <div class="phase-row">
+      <div class="phase-marker">
+        <div class="phase-dot" style="border-color:var(--green);background:var(--green);"></div>
+        <div class="phase-phase">Fase 2</div>
+        <div class="phase-where">Robot</div>
+      </div>
+      <div class="phase-body">
+        <div class="phase-title">GetVolume + SetVolume</div>
+        <div class="phase-criteria">✓ ret=0, robot responde</div>
+        <div class="phase-risk">Riesgo: Medio</div>
+        <div style="margin-top:6px;"><span class="badge ok">COMPLETADO</span></div>
+      </div>
+    </div>
+
+    <div class="phase-row">
+      <div class="phase-marker">
+        <div class="phase-dot" style="border-color:var(--amber);background:var(--amber);"></div>
+        <div class="phase-phase">Fase 3</div>
+        <div class="phase-where">Robot</div>
+      </div>
+      <div class="phase-body">
+        <div class="phase-title">otto_speak_file → parlante</div>
+        <div class="phase-criteria">Robot reproduce WAV</div>
+        <div class="phase-risk">Riesgo: Alto — Fix timing pendiente de probar</div>
+        <div style="margin-top:6px;"><span class="badge pending">EN PROGRESO — fix escrito, no probado</span></div>
+      </div>
+    </div>
+
+    <div class="phase-row">
+      <div class="phase-marker">
+        <div class="phase-dot" style="border-color:var(--text3);"></div>
+        <div class="phase-phase">Fase 4</div>
+        <div class="phase-where">Robot</div>
+      </div>
+      <div class="phase-body">
+        <div class="phase-title">otto_say CLI</div>
+        <div class="phase-criteria">texto → voz estable</div>
+        <div class="phase-risk">Riesgo: Medio</div>
+        <div style="margin-top:6px;"><span class="badge pending">PENDIENTE</span></div>
+      </div>
+    </div>
+
+    <div class="phase-row">
+      <div class="phase-marker">
+        <div class="phase-dot" style="border-color:var(--text3);"></div>
+        <div class="phase-phase">Fase 5</div>
+        <div class="phase-where">Robot</div>
+      </div>
+      <div class="phase-body">
+        <div class="phase-title">Nodo ROS2 otto_tts_bridge</div>
+        <div class="phase-criteria">ros2 topic pub → robot habla</div>
+        <div class="phase-risk">Riesgo: Medio</div>
+        <div style="margin-top:6px;"><span class="badge pending">PENDIENTE</span></div>
+      </div>
+    </div>
+
+    <div class="phase-row">
+      <div class="phase-marker">
+        <div class="phase-dot" style="border-color:var(--text3);"></div>
+        <div class="phase-phase">Fase 6</div>
+        <div class="phase-where">Robot</div>
+      </div>
+      <div class="phase-body">
+        <div class="phase-title">Conectar Ollama</div>
+        <div class="phase-criteria">Respuestas orales del LLM</div>
+        <div class="phase-risk">Riesgo: Medio</div>
+        <div style="margin-top:6px;"><span class="badge pending">PENDIENTE</span></div>
+      </div>
+    </div>
+
+    <div class="phase-row">
+      <div class="phase-marker">
+        <div class="phase-dot" style="border-color:var(--text3);"></div>
+        <div class="phase-phase">Fase 7</div>
+        <div class="phase-where">Robot</div>
+      </div>
+      <div class="phase-body">
+        <div class="phase-title">Micrófono UDP + wake word</div>
+        <div class="phase-criteria">Conversación completa end-to-end</div>
+        <div class="phase-risk">Riesgo: Alto</div>
+        <div style="margin-top:6px;"><span class="badge pending">PENDIENTE</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:28px;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:14px;">CRITERIO DE MVP COMPLETADO</div>
+  <div style="display:flex;flex-direction:column;gap:6px;">
+    <div class="safe-item"><div class="si-icon">1</div><div class="si-text">Robot reproduce frase española por parlante via <code>AudioClient.PlayStream()</code></div></div>
+    <div class="safe-item"><div class="si-icon">2</div><div class="si-text">Frase generada desde texto con Piper (<code>es_MX-gevy-high.onnx</code>)</div></div>
+    <div class="safe-item"><div class="si-icon">3</div><div class="si-text">Audio normalizado a 16kHz, mono, 16-bit PCM</div></div>
+    <div class="safe-item"><div class="si-icon">4</div><div class="si-text">Proceso ejecutable desde CLI o nodo ROS2</div></div>
+    <div class="safe-item"><div class="si-icon">5</div><div class="si-text">Volumen controlable (<code>SetVolume</code>)</div></div>
+    <div class="safe-item"><div class="si-icon">6</div><div class="si-text">Cero comandos de movimiento ejecutados</div></div>
+    <div class="safe-item"><div class="si-icon">7</div><div class="si-text">Cambio documentado y reproducible</div></div>
+  </div>
+</section>
+
+<!-- ── 14 WORKFLOW ─────────────────────────────────── -->
+<section class="section" id="workflow">
+  <div class="section-header">
+    <div class="section-num">14</div>
+    <div class="section-title">Workflow establecido</div>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="workflow-steps">
+    <div class="workflow-step">
+      <div class="workflow-step-num">1</div>
+      <div class="workflow-step-body">
+        <div class="workflow-step-cmd">editar en notebook</div>
+        <div class="workflow-step-desc">Desarrollo local en <code>~/Escritorio/Ottoguide_IA/</code></div>
+      </div>
+    </div>
+    <div class="workflow-step">
+      <div class="workflow-step-num">2</div>
+      <div class="workflow-step-body">
+        <div class="workflow-step-cmd">git commit + git push</div>
+        <div class="workflow-step-desc">Push solo desde el notebook. Nunca desde el Jetson.</div>
+      </div>
+    </div>
+    <div class="workflow-step">
+      <div class="workflow-step-num">3</div>
+      <div class="workflow-step-body">
+        <div class="workflow-step-cmd">ssh unitree@192.168.123.164</div>
+        <div class="workflow-step-desc">Conexión al Jetson via SSH</div>
+      </div>
+    </div>
+    <div class="workflow-step">
+      <div class="workflow-step-num">4</div>
+      <div class="workflow-step-body">
+        <div class="workflow-step-cmd">cd ~/Desktop/teo_Ottoguide_IA/ottoguide-ia && git pull</div>
+        <div class="workflow-step-desc">Actualizar repo en el Jetson</div>
+      </div>
+    </div>
+    <div class="workflow-step">
+      <div class="workflow-step-num">5</div>
+      <div class="workflow-step-body">
+        <div class="workflow-step-cmd">cd src/otto_audio/cpp/build && cmake .. && make -j4</div>
+        <div class="workflow-step-desc">Compilar para aarch64 en el Jetson</div>
+      </div>
+    </div>
+    <div class="workflow-step">
+      <div class="workflow-step-num">6</div>
+      <div class="workflow-step-body">
+        <div class="workflow-step-cmd">./otto_speak_file eth0 &lt;archivo.wav&gt;</div>
+        <div class="workflow-step-desc">Ejecutar con hardware real</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── 15 REPO ─────────────────────────────────────── -->
+<section class="section" id="repo">
+  <div class="section-header">
+    <div class="section-num">15</div>
+    <div class="section-title">Estado del repo</div>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="field-row" style="margin-bottom:20px;">
+    <div class="field"><div class="field-label">Repo</div><div class="field-value" style="font-family:var(--mono);font-size:12px;">github.com/TU_USUARIO/ottoguide-ia</div></div>
+    <div class="field"><div class="field-label">Visibilidad</div><div class="field-value">Privado</div></div>
+    <div class="field"><div class="field-label">Rama</div><div class="field-value"><code>main</code></div></div>
+  </div>
+
+  <div class="code-block">
+    <div class="code-block-header"><span class="code-block-lang">ESTRUCTURA DEL REPO</span><div class="code-block-dots"><span></span><span></span><span></span></div></div>
+    <pre><span class="kw">.gitignore</span>
+<span class="info-line">documentacion/</span>
+  OTTOGUIDE_ESTADO_TECNICO.md
+<span class="info-line">src/</span>
+  <span class="info-line">otto_audio/</span>
+    <span class="info-line">cpp/</span>
+      CMakeLists.txt
+      <span class="ok-line">otto_speak_file.cpp</span>   <span class="cmt">← incluye fix timing (no probado)</span>
+      wav.hpp
+    <span class="info-line">python/</span>
+      mic_capture.py
+    <span class="info-line">launch/</span>             <span class="cmt">← vacío por ahora</span></pre>
+  </div>
+</section>
+
+<!-- ── 16 PENDIENTE ────────────────────────────────── -->
+<section class="section" id="pendiente">
+  <div class="section-header">
+    <div class="section-num">16</div>
+    <div class="section-title">Pendiente — próxima sesión</div>
+    <div class="section-line"></div>
+  </div>
+
+  <table class="pending-table">
+    <thead>
+      <tr><th>Tarea</th><th>Prioridad</th><th>Descripción</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Probar fix PlayStream</td>
+        <td><span class="badge error">Alta</span></td>
+        <td><code>git pull</code> en Jetson + recompilar + correr con tono 440Hz</td>
+      </tr>
+      <tr>
+        <td>Confirmar audio PlayStream</td>
+        <td><span class="badge error">Alta</span></td>
+        <td>El robot debe emitir el tono por el parlante</td>
+      </tr>
+      <tr>
+        <td>Probar mic_capture.py</td>
+        <td><span class="badge error">Alta</span></td>
+        <td>Capturar audio desde UDP multicast y guardar WAV</td>
+      </tr>
+      <tr>
+        <td>Probar Piper → PlayStream</td>
+        <td><span class="badge error">Alta</span></td>
+        <td>Generar WAV español y reproducirlo en el robot</td>
+      </tr>
+      <tr>
+        <td>Instalar Docker en Jetson</td>
+        <td><span class="badge warning">Media</span></td>
+        <td>Para levantar Piper TTS y Ollama</td>
+      </tr>
+      <tr>
+        <td>Configurar ASR español</td>
+        <td><span class="badge warning">Media</span></td>
+        <td>Verificar que <code>rt/audio_msg</code> detecta <code>&lt;|es|&gt;</code> correctamente</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ── 17 RESTRICCIONES ────────────────────────────── -->
+<section class="section" id="restricciones">
+  <div class="section-header">
+    <div class="section-num">17</div>
+    <div class="section-title">Restricciones operativas</div>
+    <div class="section-line"></div>
+  </div>
+
+  <div style="font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--red2);margin-bottom:12px;">PROHIBIDO SIN AUTORIZACIÓN EXPLÍCITA</div>
+  <div class="restrict-list" style="margin-bottom:24px;">
+    <div class="restrict-item"><div class="ri-icon">✕</div><div class="ri-text">Comandos de locomoción — <code>SportClient</code>, <code>LowCmd</code>, <code>LowState</code>, articulaciones</div></div>
+    <div class="restrict-item"><div class="ri-icon">✕</div><div class="ri-text">AudioClient desde el notebook — <code>ret=3104</code>, no funciona</div></div>
+    <div class="restrict-item"><div class="ri-icon">✕</div><div class="ri-text"><code>git push</code> / <code>git commit</code> desde el Jetson</div></div>
+    <div class="restrict-item"><div class="ri-icon">✕</div><div class="ri-text"><code>rm -rf</code> / <code>git reset --hard</code> / <code>git clean -fd</code> / <code>git push --force</code></div></div>
+    <div class="restrict-item"><div class="ri-icon">✕</div><div class="ri-text"><code>sudo</code> en el robot salvo instalación explícitamente solicitada</div></div>
+    <div class="restrict-item"><div class="ri-icon">✕</div><div class="ri-text">Reiniciar servicios del sistema del robot</div></div>
+    <div class="restrict-item"><div class="ri-icon">✕</div><div class="ri-text">Instalar paquetes globales sin proponer primero</div></div>
+  </div>
+
+  <div style="font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--green2);margin-bottom:12px;">REGLAS ACTIVAS</div>
+  <div class="safe-list">
+    <div class="safe-item"><div class="si-icon">◆</div><div class="si-text">Volumen máximo durante pruebas: <strong style="color:var(--amber2);">50</strong>. Nunca 100 sin estar preparado.</div></div>
+    <div class="safe-item"><div class="si-icon">◆</div><div class="si-text"><code>DomainID 0</code> → reservado para servicios del robot. <code>DomainID 1</code> → pruebas desde notebook.</div></div>
+    <div class="safe-item"><div class="si-icon">◆</div><div class="si-text">Siempre compilar en el Jetson para producción (aarch64). El notebook compila solo para validación.</div></div>
+    <div class="safe-item"><div class="si-icon">◆</div><div class="si-text">Primero diagnóstico read-only, después modificaciones.</div></div>
+    <div class="safe-item"><div class="si-icon">◆</div><div class="si-text">En el Jetson para producción: <code>DomainID 0</code>, interfaz <code>eth0</code>.</div></div>
+  </div>
+
+  <div style="margin-top:24px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:20px;">
+    <div style="font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:12px;">SECUENCIA SEGURA DE INICIO — ROBOT REAL</div>
+    <div class="code-block" style="margin:0;">
+      <div class="code-block-header"><span class="code-block-lang">bash</span><div class="code-block-dots"><span></span><span></span><span></span></div></div>
+      <pre><span class="cmt"># 1. Verificar SSH</span>
+<span class="kw">ssh</span> unitree@<span class="str">192.168.123.164</span>
+
+<span class="cmt"># 2. Auditoría read-only</span>
+hostname && whoami && uname -a
+docker ps
+source /opt/ros/foxy/setup.bash && ros2 --version
+
+<span class="cmt"># 3. Buscar archivos relevantes</span>
+find ~/Desktop -maxdepth 4 -type d -iname <span class="str">"*unitree*"</span> 2>/dev/null
+find ~/Desktop -maxdepth 5 -name <span class="str">"*.onnx"</span> 2>/dev/null
+
+<span class="cmt"># 4. Primera prueba de audio (después de compilar)</span>
+./otto_speak_file eth0 /tmp/otto_test.wav
+<span class="cmt"># Esperado: [OK] Conectado. Volumen actual: XX</span></pre>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ── MOBILE NAV ──────────────────────────────────── -->
+<nav class="mobile-nav" id="mobile-nav">
+  <div class="mobile-nav-toggle" onclick="toggleMobileNav()">
+    <span class="logo">Otto<em style="color:var(--accent);">Guide</em> IA</span>
+    <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">SIP · UADE · 2026</span>
+    <span id="mob-icon" style="font-size:18px;">☰</span>
+  </div>
+  <div class="mobile-nav-links" id="mob-links">
+    <a href="#contexto" onclick="closeMobileNav()"><span class="num">01</span>Contexto</a>
+    <a href="#hardware" onclick="closeMobileNav()"><span class="num">02</span>Hardware</a>
+    <a href="#entorno" onclick="closeMobileNav()"><span class="num">03</span>Entorno</a>
+    <a href="#audio-sistema" onclick="closeMobileNav()"><span class="num">06</span>Audio G1</a>
+    <a href="#arquitectura" onclick="closeMobileNav()"><span class="num">07</span>Arquitectura</a>
+    <a href="#sesion1-logros" onclick="closeMobileNav()"><span class="num">09</span>Sesión 1</a>
+    <a href="#bug" onclick="closeMobileNav()"><span class="num">11</span>Bug fix</a>
+    <a href="#roadmap" onclick="closeMobileNav()"><span class="num">13</span>Roadmap</a>
+    <a href="#restricciones" onclick="closeMobileNav()"><span class="num">17</span>Restricciones</a>
+  </div>
+</nav>
+
+<script>
+// ── SCROLL FADE IN ─────────────────────────────────
+const fadeObs = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.04 });
+document.querySelectorAll('.section').forEach(s => fadeObs.observe(s));
+
+// ── NAV HIGHLIGHT ──────────────────────────────────
+const navItems = document.querySelectorAll('.nav-item');
+const sectObs = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      navItems.forEach(n => n.classList.remove('active'));
+      const active = document.querySelector(`.nav-item[href="#${entry.target.id}"]`);
+      if (active) active.classList.add('active');
+    }
+  });
+}, { threshold: 0.25 });
+document.querySelectorAll('.section').forEach(s => sectObs.observe(s));
+
+// ── MOBILE NAV ─────────────────────────────────────
+function toggleMobileNav() {
+  const links = document.getElementById('mob-links');
+  const icon  = document.getElementById('mob-icon');
+  const open  = links.classList.toggle('open');
+  icon.textContent = open ? '✕' : '☰';
+}
+function closeMobileNav() {
+  document.getElementById('mob-links').classList.remove('open');
+  document.getElementById('mob-icon').textContent = '☰';
+}
+</script>
+</body>
+</html>

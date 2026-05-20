@@ -112,7 +112,7 @@ std::string normalizar(const std::string& raw) {
 
 // --- Filtro anti-alucinaciones ----------------------------------------------
 bool es_alucinacion(const std::string& t) {
-    if (t.empty() || t.size() < 4) return true;
+    if (t.empty() || t.size() < 8) return true;
     // Repeticion de patron (alucinacion tipica de Whisper)
     std::string tl = t;
     std::transform(tl.begin(), tl.end(), tl.begin(), ::tolower);
@@ -123,12 +123,16 @@ bool es_alucinacion(const std::string& t) {
     count = 0; pos = 0;
     while ((pos = tl.find("gracias", pos)) != std::string::npos) { ++count; ++pos; }
     if (count >= 2) return true;
+    if (tl.find('*')        != std::string::npos) return true;
+    if (tl.find('[')        != std::string::npos) return true;
+    if (tl.find("\xe2\x99\xaa") != std::string::npos) return true;
+    if (tl.find("subtitl")  != std::string::npos) return true;
     return false;
 }
 
 // --- Wake word y despedida --------------------------------------------------
 bool es_wake_word(const std::string& t) {
-    for (auto& w : {"hola otto","ola otto","hola oto","ola oto","hola auto","otto"})
+    for (auto& w : {"hola otto","ola otto","hola oto","ola oto","hola auto"})
         if (t.find(w) != std::string::npos) return true;
     return false;
 }
@@ -144,7 +148,7 @@ std::string ollama_query(const std::string& pregunta) {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) return "";
 
-    struct timeval tv{120, 0};
+    struct timeval tv{30, 0};
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
     sockaddr_in addr{};
@@ -213,6 +217,11 @@ void otto_say(const std::string& texto) {
     double dur = (double)total / (16000.0 * 2.0);
     unitree::common::Sleep((int)dur + 2);
     g_audio->PlayStop("otto");
+    // Limpiar buffer para evitar que la voz de Otto se transcriba como pregunta
+    {
+        std::lock_guard<std::mutex> lock(buf_mutex);
+        audio_buffer.clear();
+    }
 }
 
 // --- Thread captura UDP multicast -------------------------------------------
@@ -334,7 +343,8 @@ int main(int argc, char const *argv[]) {
     std::cout << "[OTTO] Listo. Deci 'Hola Otto' para activar." << std::endl;
 
     while (running) {
-        auto chunk = tomar_audio(CAPTURE_SECS);
+        size_t secs = (estado == ESCUCHANDO) ? 5 : CAPTURE_SECS;
+        auto chunk = tomar_audio(secs);
         if (chunk.empty()) { sleep(1); continue; }
 
         float rms = calcular_rms(chunk);

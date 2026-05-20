@@ -17,10 +17,10 @@ fi
 
 case "${2:-medio}" in
   bajo)  VOL=1.0 ; SDK_VOL=30  ;;
-  medio) VOL=2.0 ; SDK_VOL=60  ;;
-  alto)  VOL=3.0 ; SDK_VOL=100  ;;
-  max)   VOL=5.0 ; SDK_VOL=100 ;;
-  *)     VOL=2.0 ; SDK_VOL=70  ;;
+  medio) VOL=2.5 ; SDK_VOL=60  ;;
+  alto)  VOL=6.0 ; SDK_VOL=100 ;;
+  max)   VOL=9.0 ; SDK_VOL=100 ;;
+  *)     VOL=2.5 ; SDK_VOL=60  ;;
 esac
 
 echo "$1" | "$PIPER" --model "$VOICE" --output_file "$TMP_RAW" && \

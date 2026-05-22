@@ -86,7 +86,7 @@ void print_indicador(State s) {
 #define SAMPLE_RATE    16000
 #define CAPTURE_SECS   3
 #define TIMEOUT_SECS   30
-#define RMS_THRESHOLD  1300
+#define RMS_THRESHOLD  2000
 #define CHUNK_SIZE     96000
 #define SDK_VOLUME     70
 
@@ -175,7 +175,9 @@ bool es_alucinacion(const std::string& t) {
         // Repeticiones del prompt
         "otto otto", "otto guide", "ottoguide", "uade otto",
         // Frases repetidas tipicas
-        "empresa", "gracias","suscribite","suscribete","suscribanse","suscribete a mi canal",
+        "empresa", "gracias","suscribite","suscribete","suscribanse","suscribete a mi canal","eheh", "eh eh", 
+        "ehe", "mmm", "hmm", "ugh",
+        "radio-canada", "sous-titrage", "ende", "udrundr",
         nullptr
     };
 
@@ -441,14 +443,16 @@ std::vector<int16_t> tomar_utterance(float rms_habla, int ms_silencio = 700, int
         float rms = calcular_rms(window);
 
         if (rms >= rms_habla) {
-            hablando      = true;
             voice_count++;
             silence_count = 0;
             utterance.insert(utterance.end(), window.begin(), window.end());
+            if (voice_count >= 2) hablando = true; // requiere 300ms de voz sostenida
         } else if (hablando) {
             silence_count++;
             utterance.insert(utterance.end(), window.begin(), window.end());
-            if (silence_count >= SILENCE_WINDOWS) break; // fin de utterance
+            if (silence_count >= SILENCE_WINDOWS) break;
+        } else {
+            voice_count = 0; // resetear si el spike fue aislado
         }
     }
 

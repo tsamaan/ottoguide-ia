@@ -250,7 +250,7 @@ std::string ollama_query(const std::string& pregunta) {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) return "";
 
-    struct timeval tv{30, 0};
+    struct timeval tv{60, 0};
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
     sockaddr_in addr{};

@@ -64,6 +64,21 @@ const char* estado_str(State s) {
     return "?";
 }
 
+// Indicador visual de estado en terminal (sobreescribe la linea actual)
+void print_indicador(State s) {
+    switch(s) {
+        case HIBERNACION:
+            std::cout << C_GRAY "\r[◯] HIBERNACION   esperando 'Hola Otto'...        " C_RESET << std::flush;
+            break;
+        case ESCUCHANDO:
+            std::cout << C_GREEN "\r[●] ESCUCHANDO    habla ahora...                  " C_RESET << std::flush;
+            break;
+        case PROCESANDO:
+            std::cout << C_YELLOW "\r[⟳] PROCESANDO    espera un momento...            " C_RESET << std::flush;
+            break;
+    }
+}
+
 // --- Configuracion ----------------------------------------------------------
 #define MCAST_GRP      "239.168.123.161"
 #define MCAST_PORT     5555
@@ -199,6 +214,35 @@ bool es_despedida(const std::string& t) {
     for (auto& w : {"chau","adios","hasta luego","gracias eso es todo","no mas preguntas","listo","hasta pronto"})
         if (t.find(w) != std::string::npos) return true;
     return false;
+}
+
+// Verificar que el texto es una consulta valida antes de mandar a Ollama
+// @INPUT: texto transcripto por Whisper
+// @OUTPUT: true si es valido para consultar, false si hay que pedir que repita
+bool es_texto_valido(const std::string& texto) {
+    if (texto.size() < 8) return false;
+
+    // Contar palabras
+    int palabras = 0;
+    bool en_palabra = false;
+    for (char c : texto) {
+        if (c == ' ' || c == '\n' || c == '.' || c == ',') { en_palabra = false; }
+        else if (!en_palabra) { en_palabra = true; ++palabras; }
+    }
+    if (palabras < 2) return false;
+
+    // Detectar patrones de otros idiomas comunes
+    std::string tl = texto;
+    std::transform(tl.begin(), tl.end(), tl.begin(), ::tolower);
+    static const char* OTROS_IDIOMAS[] = {
+        "thank you", "you are", "what is", "how are", "please",
+        "hello", "the ", "olha", "voce", "nao ", "isso",
+        nullptr
+    };
+    for (int i = 0; OTROS_IDIOMAS[i]; ++i)
+        if (tl.find(OTROS_IDIOMAS[i]) != std::string::npos) return false;
+
+    return true;
 }
 
 // --- HTTP POST para Ollama --------------------------------------------------
@@ -368,6 +412,51 @@ std::vector<int16_t> tomar_audio(size_t segundos) {
     return chunk;
 }
 
+// VAD: capturar utterance completa (espera voz -> graba -> corta en silencio)
+// @INPUT: rms_habla = umbral para detectar voz, ms_silencio = ms de silencio para cortar
+// @OUTPUT: vector con PCM de la utterance, o vacio si no hubo voz en tiempo limite
+std::vector<int16_t> tomar_utterance(float rms_habla, int ms_silencio = 700, int ms_max = 8000) {
+    const int WINDOW_SAMPLES = SAMPLE_RATE * 150 / 1000; // ventana de 150ms
+    const int SILENCE_WINDOWS = ms_silencio / 150;       // ventanas de silencio para cortar
+    const int MAX_WINDOWS     = ms_max / 150;            // limite maximo de ventanas
+
+    std::vector<int16_t> utterance;
+    int silence_count = 0;
+    int voice_count   = 0;
+    bool hablando     = false;
+
+    for (int w = 0; w < MAX_WINDOWS; ++w) {
+        usleep(150000); // esperar 150ms
+
+        std::vector<int16_t> window;
+        {
+            std::lock_guard<std::mutex> lock(buf_mutex);
+            if (audio_buffer.size() >= (size_t)WINDOW_SAMPLES) {
+                window.assign(audio_buffer.begin(), audio_buffer.begin() + WINDOW_SAMPLES);
+                audio_buffer.erase(audio_buffer.begin(), audio_buffer.begin() + WINDOW_SAMPLES);
+            }
+        }
+        if (window.empty()) continue;
+
+        float rms = calcular_rms(window);
+
+        if (rms >= rms_habla) {
+            hablando      = true;
+            voice_count++;
+            silence_count = 0;
+            utterance.insert(utterance.end(), window.begin(), window.end());
+        } else if (hablando) {
+            silence_count++;
+            utterance.insert(utterance.end(), window.begin(), window.end());
+            if (silence_count >= SILENCE_WINDOWS) break; // fin de utterance
+        }
+    }
+
+    // Requiere al menos 2 ventanas de voz real (~300ms minimo)
+    if (voice_count < 2) return {};
+    return utterance;
+}
+
 // --- Main + state machine ---------------------------------------------------
 int main(int argc, char const *argv[]) {
     srand(time(nullptr));
@@ -409,70 +498,95 @@ int main(int argc, char const *argv[]) {
           << "\n╚════════════════════════════════════╝\n" C_RESET << std::endl;
           
     while (running) {
-        size_t secs = (estado == ESCUCHANDO) ? 5 : CAPTURE_SECS;
-        auto chunk = tomar_audio(secs);
-        if (chunk.empty()) { sleep(1); continue; }
 
-        float rms = calcular_rms(chunk);
-
-        // Sin voz suficiente
-        if (rms < RMS_THRESHOLD) {
-            if (estado == ESCUCHANDO &&
-                difftime(time(nullptr), ultimo_habla) > TIMEOUT_SECS) {
-                std::cout << "[OTTO] Timeout -> HIBERNACION" << std::endl;
-                otto_say(frase_aleatoria(DESPEDIDAS));
-                estado = HIBERNACION;
-            }
-            sleep(1);
-            continue;
-        }
-
-        std::cout << C_CYAN "[MIC]" C_RESET " " << rms_bar(rms, RMS_THRESHOLD)
-            << " RMS:" << C_BOLD << (int)rms << C_RESET
-            << "  Estado:" << estado_str(estado) << std::endl;
-        std::cout << C_CYAN "[STT]" C_RESET " Transcribiendo..." << std::endl;
-
-        std::string texto = transcribir(wctx, chunk);
-        if (texto.empty()) continue;
-
-        // Filtrar alucinaciones
-        if (es_alucinacion(texto)) {
-        std::cout << C_GRAY "[FILTRO] Alucinacion descartada: \"" << texto << "\"" << C_RESET << std::endl;            
-        continue;
-        }
-
-        std::cout << C_WHITE "[STT]" C_RESET " \"" << C_BOLD << texto << C_RESET << "\"" << std::endl;
-        ultimo_habla = time(nullptr);
-        std::string t = normalizar(texto);
-
-        // --- HIBERNACION ---
+        // --- HIBERNACION: chunks fijos para deteccion rapida de wake word ---
         if (estado == HIBERNACION) {
+            print_indicador(HIBERNACION);
+
+            auto chunk = tomar_audio(CAPTURE_SECS);
+            if (chunk.empty()) { sleep(1); continue; }
+
+            float rms = calcular_rms(chunk);
+            if (rms < RMS_THRESHOLD) { sleep(1); continue; }
+
+            std::cout << "\n" << C_CYAN "[MIC]" C_RESET " " << rms_bar(rms, RMS_THRESHOLD)
+                      << " RMS:" << C_BOLD << (int)rms << C_RESET << std::endl;
+            std::cout << C_CYAN "[STT]" C_RESET " Transcribiendo..." << std::endl;
+
+            std::string texto = transcribir(wctx, chunk);
+            if (texto.empty()) continue;
+            if (es_alucinacion(texto)) {
+                std::cout << C_GRAY "[FILTRO] \"" << texto << "\"" << C_RESET << std::endl;
+                continue;
+            }
+
+            std::cout << C_WHITE "[STT]" C_RESET " \"" << C_BOLD << texto << C_RESET << "\"" << std::endl;
+            std::string t = normalizar(texto);
+
             if (es_wake_word(t)) {
-                std::cout << "[OTTO] Wake word -> ESCUCHANDO" << std::endl;
+                std::cout << C_GREEN C_BOLD "\n[OTTO] Wake word detectada -> ESCUCHANDO\n" C_RESET << std::endl;
                 estado = ESCUCHANDO;
+                ultimo_habla = time(nullptr);
                 otto_say(frase_aleatoria(SALUDOS));
             }
         }
-        // --- ESCUCHANDO ---
+
+        // --- ESCUCHANDO: VAD para capturar utterance completa ---
         else if (estado == ESCUCHANDO) {
+            print_indicador(ESCUCHANDO);
+
+            // tomar_utterance espera hasta detectar voz y luego silencio
+            auto chunk = tomar_utterance((float)RMS_THRESHOLD);
+
+            if (chunk.empty()) {
+                // No hubo voz en el tiempo maximo -> verificar timeout
+                if (difftime(time(nullptr), ultimo_habla) > TIMEOUT_SECS) {
+                    std::cout << C_GRAY "\n[OTTO] Timeout -> HIBERNACION" C_RESET << std::endl;
+                    otto_say(frase_aleatoria(DESPEDIDAS));
+                    estado = HIBERNACION;
+                }
+                continue;
+            }
+
+            float rms = calcular_rms(chunk);
+            std::cout << "\n" << C_CYAN "[MIC]" C_RESET " " << rms_bar(rms, RMS_THRESHOLD)
+                      << " RMS:" << C_BOLD << (int)rms << C_RESET << std::endl;
+            std::cout << C_CYAN "[STT]" C_RESET " Transcribiendo..." << std::endl;
+
+            std::string texto = transcribir(wctx, chunk);
+            if (texto.empty()) continue;
+            if (es_alucinacion(texto)) {
+                std::cout << C_GRAY "[FILTRO] \"" << texto << "\"" << C_RESET << std::endl;
+                continue;
+            }
+
+            std::cout << C_WHITE "[STT]" C_RESET " \"" << C_BOLD << texto << C_RESET << "\"" << std::endl;
+            ultimo_habla = time(nullptr);
+            std::string t = normalizar(texto);
+
             if (es_despedida(t)) {
-                std::cout << C_GRAY "\n[OTTO]" C_RESET " Despedida → " C_GRAY C_BOLD "HIBERNACION" C_RESET "\n" << std::endl;                
+                std::cout << C_GRAY "\n[OTTO] Despedida -> HIBERNACION\n" C_RESET << std::endl;
                 otto_say(frase_aleatoria(DESPEDIDAS));
                 estado = HIBERNACION;
                 continue;
             }
-            // Pregunta muy corta o no clara
-            if (texto.size() < 5) {
+
+            // Filtro pre-Ollama: verificar que es texto valido en espanol
+            if (!es_texto_valido(texto)) {
+                std::cout << C_GRAY "[FILTRO] Texto invalido para LLM: \"" << texto << "\"" << C_RESET << std::endl;
                 otto_say(frase_aleatoria(REPITE));
                 continue;
             }
-            std::cout << C_YELLOW "[LLM]" C_RESET " Consultando Ollama: \"" << texto << "\"" << std::endl;            
+
+            std::cout << C_YELLOW "[LLM]" C_RESET " Consultando: \"" << texto << "\"" << std::endl;
             estado = PROCESANDO;
+            print_indicador(PROCESANDO);
+
             std::string respuesta = ollama_query(texto);
             if (respuesta.empty()) {
                 otto_say(frase_aleatoria(REPITE));
             } else {
-                std::cout << C_YELLOW "[LLM]" C_RESET " Respuesta: \"" << C_BOLD << respuesta << C_RESET << "\"" << std::endl;                
+                std::cout << "\n" << C_YELLOW "[LLM]" C_RESET " Respuesta: \"" << C_BOLD << respuesta << C_RESET << "\"" << std::endl;
                 otto_say(respuesta);
                 otto_say(frase_aleatoria(CONSULTA));
             }

@@ -213,7 +213,7 @@ bool es_wake_word(const std::string& t) {
 }
 
 bool es_despedida(const std::string& t) {
-    for (auto& w : {"chau","adios","hasta luego","gracias eso es todo","no mas preguntas","listo","hasta pronto"})
+    for (auto& w : {"chau","chao","adios","hasta luego","gracias eso es todo","no mas preguntas","listo","hasta pronto", "chau otto","chao otto","adios otto","hasta luego otto", "gracias otto"})
         if (t.find(w) != std::string::npos) return true;
     return false;
 }
@@ -341,7 +341,7 @@ void otto_beep() {
         else if (i > DUR_SAMPLES - FADE) env = (DUR_SAMPLES - i) / FADE;
 
         float t      = (float)i / SAMPLE_RATE;
-        int16_t s    = (int16_t)(5000 * env * std::sin(2.0f * M_PI * FREQ * t));
+        int16_t s    = (int16_t)(15000 * env * std::sin(2.0f * M_PI * FREQ * t));
         pcm[i*2]     = s & 0xFF;
         pcm[i*2 + 1] = (s >> 8) & 0xFF;
     }
@@ -633,6 +633,7 @@ int main(int argc, char const *argv[]) {
                 std::cout << "\n" << C_YELLOW "[LLM]" C_RESET " Respuesta: \"" << C_BOLD << respuesta << C_RESET << "\"" << std::endl;
                 otto_say(respuesta);
                 otto_say(frase_aleatoria(CONSULTA));
+                otto_beep();
             }
             estado = ESCUCHANDO;
         }

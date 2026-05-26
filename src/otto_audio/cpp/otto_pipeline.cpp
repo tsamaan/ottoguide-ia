@@ -319,7 +319,7 @@ void otto_say(const std::string& texto) {
         unitree::common::Sleep(1);
     }
     double dur = (double)total / (16000.0 * 2.0);
-    unitree::common::Sleep((int)dur + 2);
+    unitree::common::Sleep((int)(dur + 0.5f) + 1);
     g_audio->PlayStop("otto");
     // Limpiar buffer para evitar que la voz de Otto se transcriba como pregunta
     {
@@ -341,7 +341,7 @@ void otto_beep() {
         else if (i > DUR_SAMPLES - FADE) env = (DUR_SAMPLES - i) / FADE;
 
         float t      = (float)i / SAMPLE_RATE;
-        int16_t s    = (int16_t)(15000 * env * std::sin(2.0f * M_PI * FREQ * t));
+        int16_t s    = (int16_t)(20000 * env * std::sin(2.0f * M_PI * FREQ * t));
         pcm[i*2]     = s & 0xFF;
         pcm[i*2 + 1] = (s >> 8) & 0xFF;
     }
@@ -379,6 +379,7 @@ void capture_thread() {
 
     std::cout << C_CYAN "[MIC]" C_RESET " Captura UDP en " C_BOLD << MCAST_GRP << ":" << MCAST_PORT << C_RESET << std::endl;
     
+
     while (running) {
         char buf[65535];
         ssize_t n = recvfrom(sock, buf, sizeof(buf), 0, nullptr, nullptr);

@@ -311,15 +311,22 @@ void otto_say(const std::string& texto) {
 
     std::string sid = std::to_string(unitree::common::GetCurrentTimeMillisecond());
     size_t offset = 0, total = pcm.size();
+    double dur = (double)total / (16000.0 * 2.0);
+    auto t_start = std::chrono::steady_clock::now();
+
     while (offset < total) {
         size_t sz = std::min((size_t)CHUNK_SIZE, total - offset);
         std::vector<uint8_t> chunk(pcm.begin()+offset, pcm.begin()+offset+sz);
         g_audio->PlayStream("otto", sid, chunk);
         offset += sz;
-        unitree::common::Sleep(1);
+        if (offset < total) unitree::common::Sleep(1);
     }
-    double dur = (double)total / (16000.0 * 2.0);
-    unitree::common::Sleep((int)(dur + 0.5f) + 1);
+
+    // Esperar solo el tiempo restante hasta que termine el audio
+    auto elapsed = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - t_start).count();
+    double remaining = dur + 0.3 - elapsed;
+    if (remaining > 0) usleep((int)(remaining * 1000000));
     g_audio->PlayStop("otto");
     // Limpiar buffer para evitar que la voz de Otto se transcriba como pregunta
     {
@@ -349,7 +356,7 @@ void otto_beep() {
     g_audio->SetVolume(100);
     std::string sid = std::to_string(unitree::common::GetCurrentTimeMillisecond());
     g_audio->PlayStream("otto", sid, pcm);
-    unitree::common::Sleep(1);
+    usleep(400000);
     g_audio->PlayStop("otto");
     g_audio->SetVolume(SDK_VOLUME);
 
@@ -583,7 +590,7 @@ int main(int argc, char const *argv[]) {
             print_indicador(ESCUCHANDO);
 
             // tomar_utterance espera hasta detectar voz y luego silencio
-            auto chunk = tomar_utterance((float)RMS_THRESHOLD);
+            auto chunk = tomar_utterance((float)RMS_THRESHOLD, 500);
 
             if (chunk.empty()) {
                 // No hubo voz en el tiempo maximo -> verificar timeout

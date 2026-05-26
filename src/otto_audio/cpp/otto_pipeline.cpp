@@ -328,6 +328,36 @@ void otto_say(const std::string& texto) {
     }
 }
 
+// Indicador sonoro: tono 880Hz 250ms cuando Otto activa ESCUCHANDO
+void otto_beep() {
+    const int DUR_SAMPLES = SAMPLE_RATE / 4;        // 250ms = 4000 muestras
+    const float FREQ      = 880.0f;
+    const float FADE      = SAMPLE_RATE * 0.02f;    // 20ms fade in/out
+
+    std::vector<uint8_t> pcm(DUR_SAMPLES * 2);
+    for (int i = 0; i < DUR_SAMPLES; ++i) {
+        float env = 1.0f;
+        if (i < FADE)                    env = i / FADE;
+        else if (i > DUR_SAMPLES - FADE) env = (DUR_SAMPLES - i) / FADE;
+
+        float t      = (float)i / SAMPLE_RATE;
+        int16_t s    = (int16_t)(5000 * env * std::sin(2.0f * M_PI * FREQ * t));
+        pcm[i*2]     = s & 0xFF;
+        pcm[i*2 + 1] = (s >> 8) & 0xFF;
+    }
+
+    std::string sid = std::to_string(unitree::common::GetCurrentTimeMillisecond());
+    g_audio->PlayStream("otto", sid, pcm);
+    unitree::common::Sleep(1);
+    g_audio->PlayStop("otto");
+
+    // Limpiar buffer para que el beep no se transcriba como voz
+    {
+        std::lock_guard<std::mutex> lock(buf_mutex);
+        audio_buffer.clear();
+    }
+}
+
 // --- Thread captura UDP multicast -------------------------------------------
 void capture_thread() {
     int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -374,9 +404,15 @@ float calcular_rms(const std::vector<int16_t>& s) {
 
 // --- Transcribir con Whisper ------------------------------------------------
 std::string transcribir(whisper_context* ctx, const std::vector<int16_t>& pcm_i16) {
+    // Normalizar amplitud para mejorar precision de Whisper
+    float max_val = 1.0f;
+    for (auto s : pcm_i16)
+        max_val = std::max(max_val, std::abs((float)s));
+    float gain = (max_val > 500.0f) ? (20000.0f / max_val) : 1.0f;
+
     std::vector<float> pcm_f32(pcm_i16.size());
     for (size_t i = 0; i < pcm_i16.size(); ++i)
-        pcm_f32[i] = pcm_i16[i] / 32768.0f;
+        pcm_f32[i] = std::min(1.0f, std::max(-1.0f, (pcm_i16[i] * gain) / 32768.0f));
 
     whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_BEAM_SEARCH);
     params.language         = "es";
@@ -386,6 +422,9 @@ std::string transcribir(whisper_context* ctx, const std::vector<int16_t>& pcm_i1
     params.no_context       = true;
     params.initial_prompt   = WHISPER_PROMPT;
     params.n_threads        = 4;
+    params.beam_size        = 3;
+    params.no_speech_thold  = 0.4f;
+    params.temperature      = 0.0f;
 
     auto t0 = std::chrono::steady_clock::now();
     if (whisper_full(ctx, params, pcm_f32.data(), (int)pcm_f32.size()) != 0)
@@ -531,6 +570,7 @@ int main(int argc, char const *argv[]) {
                 std::cout << C_GREEN C_BOLD "\n[OTTO] Wake word detectada -> ESCUCHANDO\n" C_RESET << std::endl;
                 estado = ESCUCHANDO;
                 ultimo_habla = time(nullptr);
+                otto_beep();
                 otto_say(frase_aleatoria(SALUDOS));
             }
         }

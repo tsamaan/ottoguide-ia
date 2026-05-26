@@ -422,7 +422,7 @@ std::string transcribir(whisper_context* ctx, const std::vector<int16_t>& pcm_i1
     params.no_context       = true;
     params.initial_prompt   = WHISPER_PROMPT;
     params.n_threads        = 4;
-    params.beam_size        = 3;
+    params.beam_search.beam_size = 3;
     params.no_speech_thold  = 0.4f;
     params.temperature      = 0.0f;
 

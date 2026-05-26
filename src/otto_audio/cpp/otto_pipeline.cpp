@@ -341,15 +341,17 @@ void otto_beep() {
         else if (i > DUR_SAMPLES - FADE) env = (DUR_SAMPLES - i) / FADE;
 
         float t      = (float)i / SAMPLE_RATE;
-        int16_t s    = (int16_t)(20000 * env * std::sin(2.0f * M_PI * FREQ * t));
+        int16_t s    = (int16_t)(32000 * env * std::sin(2.0f * M_PI * FREQ * t));
         pcm[i*2]     = s & 0xFF;
         pcm[i*2 + 1] = (s >> 8) & 0xFF;
     }
 
+    g_audio->SetVolume(100);
     std::string sid = std::to_string(unitree::common::GetCurrentTimeMillisecond());
     g_audio->PlayStream("otto", sid, pcm);
     unitree::common::Sleep(1);
     g_audio->PlayStop("otto");
+    g_audio->SetVolume(SDK_VOLUME);
 
     // Limpiar buffer para que el beep no se transcriba como voz
     {
@@ -571,8 +573,8 @@ int main(int argc, char const *argv[]) {
                 std::cout << C_GREEN C_BOLD "\n[OTTO] Wake word detectada -> ESCUCHANDO\n" C_RESET << std::endl;
                 estado = ESCUCHANDO;
                 ultimo_habla = time(nullptr);
-                otto_beep();
                 otto_say(frase_aleatoria(SALUDOS));
+                otto_beep();
             }
         }
 
@@ -620,6 +622,7 @@ int main(int argc, char const *argv[]) {
             if (!es_texto_valido(texto)) {
                 std::cout << C_GRAY "[FILTRO] Texto invalido para LLM: \"" << texto << "\"" << C_RESET << std::endl;
                 otto_say(frase_aleatoria(REPITE));
+                otto_beep();
                 continue;
             }
 
@@ -630,6 +633,7 @@ int main(int argc, char const *argv[]) {
             std::string respuesta = ollama_query(texto);
             if (respuesta.empty()) {
                 otto_say(frase_aleatoria(REPITE));
+                otto_beep();
             } else {
                 std::cout << "\n" << C_YELLOW "[LLM]" C_RESET " Respuesta: \"" << C_BOLD << respuesta << C_RESET << "\"" << std::endl;
                 otto_say(respuesta);

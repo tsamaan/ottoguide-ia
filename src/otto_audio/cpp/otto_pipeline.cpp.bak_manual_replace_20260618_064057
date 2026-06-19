@@ -860,9 +860,8 @@ int main(int argc, char const *argv[]) {
                 otto_beep();
             } else {
                 std::cout << "\n" << C_YELLOW "[LLM]" C_RESET " Respuesta: \"" << C_BOLD << respuesta << C_RESET << "\"" << std::endl;
-                // Fusionado en una sola llamada para que otto_beep() suene
-                // inmediatamente al terminar el audio, sin overhead intermedio.
-                otto_say(respuesta + " " + frase_aleatoria(CONSULTA));
+                otto_say(respuesta);
+                otto_say(frase_aleatoria(CONSULTA));
                 otto_beep();
             }
             estado = ESCUCHANDO;

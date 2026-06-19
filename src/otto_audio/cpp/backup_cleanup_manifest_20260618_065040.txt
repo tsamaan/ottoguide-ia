@@ -1,0 +1,43 @@
+# Backup cleanup manifest - 20260618_065040
+
+SRC_DIR=/home/unitree/Desktop/teo_Ottoguide_IA/ottoguide-ia/src/otto_audio/cpp
+TARGET=/home/unitree/Desktop/teo_Ottoguide_IA/ottoguide-ia/src/otto_audio/cpp/otto_pipeline.cpp
+KEEP_BACKUP=/home/unitree/Desktop/teo_Ottoguide_IA/ottoguide-ia/src/otto_audio/cpp/otto_pipeline.cpp.bak_manual_replace_20260618_064057
+
+## Files before cleanup
+-rw-rw-r-- 1 unitree unitree 36K Jun 18 06:40 otto_pipeline.cpp
+-rw-rw-r-- 1 unitree unitree 25K May 27 05:44 otto_pipeline.cpp.bak_20260605_041955
+-rw-rw-r-- 1 unitree unitree 32K Jun  5 04:29 otto_pipeline.cpp.bak_agent_20260605_052853
+-rw-rw-r-- 1 unitree unitree 36K Jun  5 05:29 otto_pipeline.cpp.bak_agent_nobeep_20260605_054406
+-rw-rw-r-- 1 unitree unitree 32K Jun  5 04:20 otto_pipeline.cpp.bak_fix_warning_20260605_042952
+-rw-rw-r-- 1 unitree unitree 36K Jun  5 05:44 otto_pipeline.cpp.bak_manual_replace_20260618_064057
+
+## SHA256 before cleanup
+0d1cc4567387f4bc41e3705d95c16d80be2e61d76fe2ea99dbe8a9fa6a926bcf  otto_pipeline.cpp
+696a5342f7340c8a4025950714e2a2ff404f8d497bd20c4bd9f50e50501f69cd  otto_pipeline.cpp.bak_20260605_041955
+bd019d286d41acae0b17982be440a6f9f1f4412ea00ebc4b2de7f6e0669c14e5  otto_pipeline.cpp.bak_agent_20260605_052853
+17bf054405415eb93503773e2939d50ffc333a5097f050fecc2bedd7a497e379  otto_pipeline.cpp.bak_agent_nobeep_20260605_054406
+8daa958df56747eae5bff6b9cb66121c99b7df317d1cd9a588b4741827baadca  otto_pipeline.cpp.bak_fix_warning_20260605_042952
+47011fb89ec8e5c61fcfefe48bc8674041e072fca018474d38d7c077d8f4a04d  otto_pipeline.cpp.bak_manual_replace_20260618_064057
+
+## VALIDATION=PASS (wake-word + LLM confirmados)
+
+## Candidates to delete
+/home/unitree/Desktop/teo_Ottoguide_IA/ottoguide-ia/src/otto_audio/cpp/otto_pipeline.cpp.bak_agent_20260605_052853
+bd019d286d41acae0b17982be440a6f9f1f4412ea00ebc4b2de7f6e0669c14e5  /home/unitree/Desktop/teo_Ottoguide_IA/ottoguide-ia/src/otto_audio/cpp/otto_pipeline.cpp.bak_agent_20260605_052853
+/home/unitree/Desktop/teo_Ottoguide_IA/ottoguide-ia/src/otto_audio/cpp/otto_pipeline.cpp.bak_20260605_041955
+696a5342f7340c8a4025950714e2a2ff404f8d497bd20c4bd9f50e50501f69cd  /home/unitree/Desktop/teo_Ottoguide_IA/ottoguide-ia/src/otto_audio/cpp/otto_pipeline.cpp.bak_20260605_041955
+/home/unitree/Desktop/teo_Ottoguide_IA/ottoguide-ia/src/otto_audio/cpp/otto_pipeline.cpp.bak_fix_warning_20260605_042952
+8daa958df56747eae5bff6b9cb66121c99b7df317d1cd9a588b4741827baadca  /home/unitree/Desktop/teo_Ottoguide_IA/ottoguide-ia/src/otto_audio/cpp/otto_pipeline.cpp.bak_fix_warning_20260605_042952
+/home/unitree/Desktop/teo_Ottoguide_IA/ottoguide-ia/src/otto_audio/cpp/otto_pipeline.cpp.bak_agent_nobeep_20260605_054406
+17bf054405415eb93503773e2939d50ffc333a5097f050fecc2bedd7a497e379  /home/unitree/Desktop/teo_Ottoguide_IA/ottoguide-ia/src/otto_audio/cpp/otto_pipeline.cpp.bak_agent_nobeep_20260605_054406
+
+## Files after cleanup
+-rw-rw-r-- 1 unitree unitree 36K Jun 18 06:40 /home/unitree/Desktop/teo_Ottoguide_IA/ottoguide-ia/src/otto_audio/cpp/otto_pipeline.cpp
+-rw-rw-r-- 1 unitree unitree 36K Jun  5 05:44 /home/unitree/Desktop/teo_Ottoguide_IA/ottoguide-ia/src/otto_audio/cpp/otto_pipeline.cpp.bak_manual_replace_20260618_064057
+
+## SHA256 after cleanup
+0d1cc4567387f4bc41e3705d95c16d80be2e61d76fe2ea99dbe8a9fa6a926bcf  /home/unitree/Desktop/teo_Ottoguide_IA/ottoguide-ia/src/otto_audio/cpp/otto_pipeline.cpp
+47011fb89ec8e5c61fcfefe48bc8674041e072fca018474d38d7c077d8f4a04d  /home/unitree/Desktop/teo_Ottoguide_IA/ottoguide-ia/src/otto_audio/cpp/otto_pipeline.cpp.bak_manual_replace_20260618_064057
+
+BACKUP_COUNT=1

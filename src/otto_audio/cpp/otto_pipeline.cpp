@@ -455,7 +455,7 @@ std::string ollama_query(const std::string& pregunta) {
     size_t pos = 0;
     while ((pos = p.find('"', pos)) != std::string::npos) { p.replace(pos, 1, "\\\""); pos += 2; }
 
-    std::string body = "{\"model\":\"otto\",\"prompt\":\"" + p + "\",\"stream\":false,\"think\":false}";
+    std::string body = "{\"model\":\"otto-llama3\",\"prompt\":\"" + p + "\",\"stream\":false,\"think\":false}";
     std::string req  = "POST /api/generate HTTP/1.0\r\n"
                        "Host: 127.0.0.1\r\n"
                        "Content-Type: application/json\r\n"

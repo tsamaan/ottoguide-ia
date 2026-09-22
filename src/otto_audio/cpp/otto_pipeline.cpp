@@ -853,7 +853,11 @@ int main(int argc, char const *argv[]) {
                       << " RMS:" << C_BOLD << (int)rms << C_RESET << std::endl;
             std::cout << C_CYAN "[STT]" C_RESET " Transcribiendo..." << std::endl;
 
+            auto t_stt_start = std::chrono::steady_clock::now();
             std::string texto = transcribir(wctx, chunk);
+            double stt_secs = std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - t_stt_start).count();
+            std::cout << C_GRAY "[TIEMPO] STT: " << stt_secs << "s" C_RESET << std::endl;
             if (texto.empty()) continue;
 
             // ════════════════════════════════════════════════════════════════════════════
@@ -897,20 +901,28 @@ int main(int argc, char const *argv[]) {
                 continue;
             }
 
-            // Filtro 2: Validación semántica (intención clara, contexto coherente)
-            if (!es_consulta_coherente(texto)) {
-                std::cout << C_YELLOW "[FILTRO COGNITIVO] Sin intención clara: \"" << texto << "\"" << C_RESET << std::endl;
-                std::string respuesta_rechazo = seleccionar_rechazo_contextual(texto);
-                otto_say(respuesta_rechazo);
-                otto_beep();
-                continue;
-            }
+            // Filtro 2 (Validación semántica, es_consulta_coherente) DESHABILITADO
+            // el 2026-09-22: era una lista fija de vocabulario/patrones
+            // ("uade", "aula", "biblioteca", etc.) que rechazaba localmente
+            // cualquier pregunta que no matcheara esas palabras exactas --
+            // fail-closed (default: rechazar) -- sin que la consulta llegara
+            // nunca a Ollama. El usuario reportó justo esto: "la pregunta no
+            // llega a ningún modelo de IA". Se confía en que Llama 3 8B
+            // maneja bien preguntas raras/ambiguas por sí solo, sin
+            // necesitar este gatekeeper local. Funciones originales
+            // (es_consulta_coherente/seleccionar_rechazo_contextual) quedan
+            // definidas más arriba sin usarse, por si hay que volver atrás.
 
             std::cout << C_YELLOW "[LLM]" C_RESET " Consultando: \"" << texto << "\"" << std::endl;
             estado = PROCESANDO;
             print_indicador(PROCESANDO);
 
+            auto t_llm_start = std::chrono::steady_clock::now();
             std::string respuesta = ollama_query(texto);
+            double llm_secs = std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - t_llm_start).count();
+            std::cout << C_GRAY "[TIEMPO] LLM: " << llm_secs << "s" C_RESET << std::endl;
+
             if (respuesta.empty()) {
                 otto_say(frase_aleatoria(REPITE));
                 otto_beep();
@@ -918,7 +930,11 @@ int main(int argc, char const *argv[]) {
                 std::cout << "\n" << C_YELLOW "[LLM]" C_RESET " Respuesta: \"" << C_BOLD << respuesta << C_RESET << "\"" << std::endl;
                 // Fusionado en una sola llamada para que otto_beep() suene
                 // inmediatamente al terminar el audio, sin overhead intermedio.
+                auto t_tts_start = std::chrono::steady_clock::now();
                 otto_say(respuesta + " " + frase_aleatoria(CONSULTA));
+                double tts_secs = std::chrono::duration<double>(
+                    std::chrono::steady_clock::now() - t_tts_start).count();
+                std::cout << C_GRAY "[TIEMPO] TTS: " << tts_secs << "s" C_RESET << std::endl;
                 otto_beep();
             }
             estado = ESCUCHANDO;

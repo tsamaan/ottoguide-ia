@@ -84,7 +84,8 @@ struct SileroVad::Impl {
     }
 };
 
-SileroVad::SileroVad(const std::string& model_path) : impl_(new Impl(model_path)) {}
+SileroVad::SileroVad(const std::string& model_path, float threshold)
+    : impl_(new Impl(model_path)), threshold_(threshold) {}
 SileroVad::~SileroVad() = default;
 
 float SileroVad::speech_probability(const int16_t* window, size_t n) {

@@ -55,12 +55,13 @@ set_target_properties(vad_harness PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
 )
 
-add_executable(otto_pipeline otto_pipeline.cpp mic_capture.cpp)
+add_executable(otto_pipeline otto_pipeline.cpp mic_capture.cpp silero_vad.cpp rms_vad.cpp)
 target_include_directories(otto_pipeline PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${WHISPER_DIR}/include
     ${WHISPER_DIR}
     ${WHISPER_DIR}/ggml/include
+    ${ONNXRUNTIME_DIR}/include
 )
 target_link_libraries(otto_pipeline
     unitree_sdk2
@@ -69,11 +70,12 @@ target_link_libraries(otto_pipeline
     ${WHISPER_DIR}/build/ggml/src/libggml-base.so
     ${WHISPER_DIR}/build/ggml/src/libggml-cpu.so
     ${WHISPER_DIR}/build/ggml/src/ggml-cuda/libggml-cuda.so
+    ${ONNXRUNTIME_DIR}/lib/libonnxruntime.so
     pthread
     asound
 )
 set_target_properties(otto_pipeline PROPERTIES
-    BUILD_RPATH "${WHISPER_DIR}/build/src:${WHISPER_DIR}/build/ggml/src:${WHISPER_DIR}/build/ggml/src/ggml-cuda"
-    INSTALL_RPATH "${WHISPER_DIR}/build/src:${WHISPER_DIR}/build/ggml/src:${WHISPER_DIR}/build/ggml/src/ggml-cuda"
+    BUILD_RPATH "${WHISPER_DIR}/build/src:${WHISPER_DIR}/build/ggml/src:${WHISPER_DIR}/build/ggml/src/ggml-cuda:${ONNXRUNTIME_DIR}/lib"
+    INSTALL_RPATH "${WHISPER_DIR}/build/src:${WHISPER_DIR}/build/ggml/src:${WHISPER_DIR}/build/ggml/src/ggml-cuda:${ONNXRUNTIME_DIR}/lib"
     BUILD_WITH_INSTALL_RPATH TRUE
 )

@@ -9,6 +9,7 @@
 #include <thread>
 #include <mutex>
 #include <atomic>
+#include <memory>
 #include <cmath>
 #include <cstring>
 #include <unistd.h>
@@ -26,6 +27,9 @@
 #include <unitree/robot/g1/audio/g1_audio_client.hpp>
 #include "wav.hpp"
 #include "mic_capture.hpp"
+#include "vad.hpp"
+#include "rms_vad.hpp"
+#include "silero_vad.hpp"
 
 // --- Colores ANSI -----------------------------------------------------------
 #define C_RESET  "\033[0m"
@@ -96,6 +100,12 @@ void print_indicador(State s) {
 // entero sea voz sostenida.
 #define RMS_THRESHOLD  800
 #define CHUNK_SIZE     96000
+
+// Fase 2 de la mejora de VAD (ver TODO.md): modelo local de Silero VAD.
+// Si no carga (librería/modelo faltante), el pipeline cae a RmsVad
+// (RMS_THRESHOLD de arriba) en vez de romperse -- ver construcción del
+// VAD en main().
+#define SILERO_MODEL_PATH "/home/unitree/Desktop/silero_vad/silero_vad.onnx"
 #define SDK_VOLUME     70
 
 #define WHISPER_MODEL  "/home/unitree/Desktop/whisper.cpp/models/ggml-large-v3-turbo.bin"
@@ -662,12 +672,23 @@ std::vector<int16_t> tomar_audio(size_t segundos) {
 }
 
 // VAD: capturar utterance completa (espera voz -> graba -> corta en silencio)
-// @INPUT: rms_habla = umbral para detectar voz, ms_silencio = ms de silencio para cortar
-// @OUTPUT: vector con PCM de la utterance, o vacio si no hubo voz en tiempo limite
-std::vector<int16_t> tomar_utterance(float rms_habla, int ms_silencio = 700, int ms_max = 8000) {
-    const int WINDOW_SAMPLES = SAMPLE_RATE * 150 / 1000; // ventana de 150ms
-    const int SILENCE_WINDOWS = ms_silencio / 150;       // ventanas de silencio para cortar
-    const int MAX_WINDOWS     = ms_max / 150;            // limite maximo de ventanas
+// @INPUT: vad = detector a usar (Silero o RMS de respaldo, ver main());
+//         ms_voz_minima = cuanta voz sostenida hace falta para confirmar
+//         que "esta hablando" (evita que un ruido aislado dispare esto);
+//         ms_silencio = ms de silencio para cortar; ms_max = limite total.
+// @OUTPUT: vector con PCM de la utterance, o vacio si no hubo voz real
+// en el tiempo limite.
+//
+// Generico sobre el tamaño de ventana: cada VAD pide el suyo
+// (vad.window_size() -- 512 muestras/32ms para Silero, 2400/150ms para el
+// RMS de respaldo), tomar_utterance() no asume nada fijo.
+std::vector<int16_t> tomar_utterance(VoiceActivityDetector& vad, int ms_voz_minima = 300,
+                                      int ms_silencio = 700, int ms_max = 8000) {
+    const int WINDOW_SAMPLES = vad.window_size();
+    const int MS_PER_WINDOW  = WINDOW_SAMPLES * 1000 / SAMPLE_RATE;
+    const int VOICE_WINDOWS   = std::max(1, ms_voz_minima / MS_PER_WINDOW);
+    const int SILENCE_WINDOWS = std::max(1, ms_silencio / MS_PER_WINDOW);
+    const int MAX_WINDOWS     = std::max(1, ms_max / MS_PER_WINDOW);
 
     std::vector<int16_t> utterance;
     int silence_count = 0;
@@ -675,7 +696,7 @@ std::vector<int16_t> tomar_utterance(float rms_habla, int ms_silencio = 700, int
     bool hablando     = false;
 
     for (int w = 0; w < MAX_WINDOWS; ++w) {
-        usleep(150000); // esperar 150ms
+        usleep(MS_PER_WINDOW * 1000);
 
         std::vector<int16_t> window;
         {
@@ -687,13 +708,13 @@ std::vector<int16_t> tomar_utterance(float rms_habla, int ms_silencio = 700, int
         }
         if (window.empty()) continue;
 
-        float rms = calcular_rms(window);
+        bool es_voz = vad.is_speech(window.data(), window.size());
 
-        if (rms >= rms_habla) {
+        if (es_voz) {
             voice_count++;
             silence_count = 0;
             utterance.insert(utterance.end(), window.begin(), window.end());
-            if (voice_count >= 2) hablando = true; // requiere 300ms de voz sostenida
+            if (voice_count >= VOICE_WINDOWS) hablando = true;
         } else if (hablando) {
             silence_count++;
             utterance.insert(utterance.end(), window.begin(), window.end());
@@ -703,8 +724,7 @@ std::vector<int16_t> tomar_utterance(float rms_habla, int ms_silencio = 700, int
         }
     }
 
-    // Requiere al menos 2 ventanas de voz real (~300ms minimo)
-    if (voice_count < 2) return {};
+    if (voice_count < VOICE_WINDOWS) return {};
     return utterance;
 }
 
@@ -738,6 +758,22 @@ int main(int argc, char const *argv[]) {
     }
     std::cout << "[OK] Whisper cargado en GPU." << std::endl;
 
+    // VAD: Silero (local, ONNX Runtime) por defecto -- distingue voz real
+    // de ruido, a diferencia del umbral de RMS que reemplaza (ver
+    // TODO.md, "Mejora de detección de voz"). Si no carga (librería o
+    // modelo faltante/corrupto), cae a RmsVad -- el robot sigue andando
+    // degradado en vez de no arrancar.
+    std::unique_ptr<VoiceActivityDetector> vad;
+    try {
+        vad = std::make_unique<SileroVad>(SILERO_MODEL_PATH, 0.5f);
+        std::cout << C_GREEN "[VAD] Silero VAD cargado OK." C_RESET << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << C_YELLOW "[VAD] No se pudo cargar Silero VAD (" << e.what()
+                   << ") -- usando RMS de respaldo (umbral " << RMS_THRESHOLD << ")."
+                   C_RESET << std::endl;
+        vad = std::make_unique<RmsVad>((float)RMS_THRESHOLD);
+    }
+
     // Mic USB-C (AB13X) via ALSA, reemplaza el capture_thread() de multicast
     // UDP (239.168.123.161:5555 sin publicar nada desde que se rompio el
     // mic interno). capture_thread() queda definido mas arriba sin usarse,
@@ -767,7 +803,7 @@ int main(int argc, char const *argv[]) {
         if (estado == HIBERNACION) {
             print_indicador(HIBERNACION);
 
-            auto chunk = tomar_utterance((float)RMS_THRESHOLD, 500);
+            auto chunk = tomar_utterance(*vad, 300, 500);
             if (chunk.empty()) continue;
 
             float rms = calcular_rms(chunk);
@@ -800,7 +836,7 @@ int main(int argc, char const *argv[]) {
             print_indicador(ESCUCHANDO);
 
             // tomar_utterance espera hasta detectar voz y luego silencio
-            auto chunk = tomar_utterance((float)RMS_THRESHOLD, 500);
+            auto chunk = tomar_utterance(*vad, 300, 500);
 
             if (chunk.empty()) {
                 // No hubo voz en el tiempo maximo -> verificar timeout

@@ -16,6 +16,12 @@ add_executable(asr_test asr_test.cpp)
 target_include_directories(asr_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(asr_test unitree_sdk2)
 
+# Herramienta de calibración del mic USB-C (ver ARQUITECTURA.md Fase 2) —
+# standalone, no depende de unitree_sdk2/whisper, no toca otto_pipeline.
+add_executable(mic_capture_test mic_capture.cpp mic_capture_test.cpp)
+target_include_directories(mic_capture_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(mic_capture_test asound pthread)
+
 set(WHISPER_DIR /home/unitree/Desktop/whisper.cpp)
 
 add_executable(otto_pipeline otto_pipeline.cpp)

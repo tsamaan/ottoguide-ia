@@ -1,6 +1,12 @@
 #ifndef __UT_ROBOT_WAV_READER_HPP__
 #define __UT_ROBOT_WAV_READER_HPP__
 
+#include <cstdint>
+#include <fstream>
+#include <istream>
+#include <string>
+#include <vector>
+
 struct WaveHeader {
   void SeekToDataChunk(std::istream &is) {
     while (is && subchunk2_id != 0x61746164) {

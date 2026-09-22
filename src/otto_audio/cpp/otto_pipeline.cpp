@@ -87,7 +87,14 @@ void print_indicador(State s) {
 #define SAMPLE_RATE    16000
 #define CAPTURE_SECS   3
 #define TIMEOUT_SECS   30
-#define RMS_THRESHOLD  2000
+// Bajado de 2000 a 800 el 2026-09-22: con el mic USB-C nuevo (AB13X), el
+// RMS_THRESHOLD se compara contra el promedio de TODO un bloque de
+// CAPTURE_SECS (3s) — un "Hola Otto" (<1s) diluido en 3s de silencio no
+// llegaba a 2000 aunque el pico de voz sí lo superaba (medido: silencio
+// real ~1-40, picos de voz 190-3300 según la ventana). 800 deja margen
+// amplio sobre el ruido de fondo real sin exigir que la mitad del bloque
+// entero sea voz sostenida.
+#define RMS_THRESHOLD  800
 #define CHUNK_SIZE     96000
 #define SDK_VOLUME     70
 

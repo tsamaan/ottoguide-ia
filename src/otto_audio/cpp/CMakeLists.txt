@@ -40,6 +40,21 @@ set_target_properties(onnx_smoke_test PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
 )
 
+# Fase 1: corre SileroVad (silero_vad.hpp/.cpp, la clase real que despues
+# se integra a otto_pipeline en la Fase 2) sobre archivos .wav de
+# referencia en test_fixtures/ -- permite calibrar sin el robot en vivo.
+add_executable(vad_harness vad_harness.cpp silero_vad.cpp)
+target_include_directories(vad_harness PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${ONNXRUNTIME_DIR}/include
+)
+target_link_libraries(vad_harness ${ONNXRUNTIME_DIR}/lib/libonnxruntime.so)
+set_target_properties(vad_harness PROPERTIES
+    BUILD_RPATH "${ONNXRUNTIME_DIR}/lib"
+    INSTALL_RPATH "${ONNXRUNTIME_DIR}/lib"
+    BUILD_WITH_INSTALL_RPATH TRUE
+)
+
 add_executable(otto_pipeline otto_pipeline.cpp mic_capture.cpp)
 target_include_directories(otto_pipeline PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}

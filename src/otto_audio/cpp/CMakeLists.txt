@@ -24,7 +24,7 @@ target_link_libraries(mic_capture_test asound pthread)
 
 set(WHISPER_DIR /home/unitree/Desktop/whisper.cpp)
 
-add_executable(otto_pipeline otto_pipeline.cpp)
+add_executable(otto_pipeline otto_pipeline.cpp mic_capture.cpp)
 target_include_directories(otto_pipeline PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${WHISPER_DIR}/include
@@ -39,6 +39,7 @@ target_link_libraries(otto_pipeline
     ${WHISPER_DIR}/build/ggml/src/libggml-cpu.so
     ${WHISPER_DIR}/build/ggml/src/ggml-cuda/libggml-cuda.so
     pthread
+    asound
 )
 set_target_properties(otto_pipeline PROPERTIES
     BUILD_RPATH "${WHISPER_DIR}/build/src:${WHISPER_DIR}/build/ggml/src:${WHISPER_DIR}/build/ggml/src/ggml-cuda"

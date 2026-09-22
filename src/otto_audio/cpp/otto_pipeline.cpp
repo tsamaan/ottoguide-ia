@@ -25,6 +25,7 @@
 #include <unitree/robot/channel/channel_factory.hpp>
 #include <unitree/robot/g1/audio/g1_audio_client.hpp>
 #include "wav.hpp"
+#include "mic_capture.hpp"
 
 // --- Colores ANSI -----------------------------------------------------------
 #define C_RESET  "\033[0m"
@@ -730,7 +731,12 @@ int main(int argc, char const *argv[]) {
     }
     std::cout << "[OK] Whisper cargado en GPU." << std::endl;
 
-    std::thread cap(capture_thread);
+    // Mic USB-C (AB13X) via ALSA, reemplaza el capture_thread() de multicast
+    // UDP (239.168.123.161:5555 sin publicar nada desde que se rompio el
+    // mic interno). capture_thread() queda definido mas arriba sin usarse,
+    // por si hay que volver atras rapido.
+    std::thread cap(mic_capture_thread, std::ref(buf_mutex), std::ref(audio_buffer),
+                     std::ref(running), SAMPLE_RATE);
     sleep(CAPTURE_SECS);
 
     State estado = HIBERNACION;

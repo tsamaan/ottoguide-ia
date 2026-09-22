@@ -24,6 +24,22 @@ target_link_libraries(mic_capture_test asound pthread)
 
 set(WHISPER_DIR /home/unitree/Desktop/whisper.cpp)
 
+# Fase 0 de la mejora de VAD local (ver TODO.md, sección "Mejora de
+# detección de voz"): ONNX Runtime prebuilt CPU-only oficial de Microsoft,
+# descomprimido fuera del repo -- mismo criterio que WHISPER_DIR arriba.
+set(ONNXRUNTIME_DIR /home/unitree/Desktop/onnxruntime-linux-aarch64-1.30.0)
+
+# Prueba aislada: confirma que ONNX Runtime + el modelo Silero VAD
+# compilan/linkean/corren en este Jetson antes de tocar otto_pipeline.
+add_executable(onnx_smoke_test onnx_smoke_test.cpp)
+target_include_directories(onnx_smoke_test PRIVATE ${ONNXRUNTIME_DIR}/include)
+target_link_libraries(onnx_smoke_test ${ONNXRUNTIME_DIR}/lib/libonnxruntime.so)
+set_target_properties(onnx_smoke_test PROPERTIES
+    BUILD_RPATH "${ONNXRUNTIME_DIR}/lib"
+    INSTALL_RPATH "${ONNXRUNTIME_DIR}/lib"
+    BUILD_WITH_INSTALL_RPATH TRUE
+)
+
 add_executable(otto_pipeline otto_pipeline.cpp mic_capture.cpp)
 target_include_directories(otto_pipeline PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}

@@ -23,6 +23,11 @@
 // agarra cualquier fuente "usb" igual.
 #define PREFERRED_SOURCE_HINT "ab13x"
 
+// Ganancia de software aplicada a cada muestra (ver comentario donde se usa,
+// más abajo en el loop de captura). Arrancar en 4.0 y ajustar con datos
+// reales de mic_capture_test a la distancia real de uso (~0.5m).
+#define MIC_GAIN 4.0f
+
 namespace {
 
 std::string to_lower(std::string s) {
@@ -148,6 +153,18 @@ void mic_capture_thread(std::mutex& buf_mutex,
             continue;
         }
         if (n <= 0) continue;
+
+        // Ganancia de software: el corbatero es un mic "close-talk" (pensado
+        // para estar pegado a la ropa/boca), a ~0.5m del robot llega muy
+        // débil. Esto amplifica TODO por igual (voz y ruido de fondo), no
+        // reemplaza un mic mejor si hace falta más alcance — ajustar
+        // MIC_GAIN acá si hace falta después de medir con mic_capture_test.
+        for (snd_pcm_sframes_t i = 0; i < n; ++i) {
+            float amplified = period_buf[i] * MIC_GAIN;
+            if (amplified > 32767.f) amplified = 32767.f;
+            else if (amplified < -32768.f) amplified = -32768.f;
+            period_buf[i] = (int16_t)amplified;
+        }
 
         std::lock_guard<std::mutex> lock(buf_mutex);
         buffer.insert(buffer.end(), period_buf.begin(), period_buf.begin() + n);

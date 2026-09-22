@@ -755,15 +755,22 @@ int main(int argc, char const *argv[]) {
           
     while (running) {
 
-        // --- HIBERNACION: chunks fijos para deteccion rapida de wake word ---
+        // --- HIBERNACION: VAD por ventanas cortas, igual que ESCUCHANDO ---
+        // Antes usaba tomar_audio(CAPTURE_SECS): un bloque ciego de 3s fijo,
+        // promediado entero contra RMS_THRESHOLD. Eso diluia un "Hola Otto"
+        // corto si el resto del bloque era silencio, y si alguien hablaba
+        // antes en la misma ventana, esa voz ajena se colaba en el chunk
+        // (bug reportado 2026-09-22: "tuve que repetirlo varias veces").
+        // tomar_utterance() ya resuelve esto en ESCUCHANDO -- arranca a
+        // grabar recien cuando detecta voz sostenida (300ms) y corta en
+        // silencio real, sin depender de donde caiga un bloque fijo.
         if (estado == HIBERNACION) {
             print_indicador(HIBERNACION);
 
-            auto chunk = tomar_audio(CAPTURE_SECS);
-            if (chunk.empty()) { sleep(1); continue; }
+            auto chunk = tomar_utterance((float)RMS_THRESHOLD, 500);
+            if (chunk.empty()) continue;
 
             float rms = calcular_rms(chunk);
-            if (rms < RMS_THRESHOLD) { sleep(1); continue; }
 
             std::cout << "\n" << C_CYAN "[MIC]" C_RESET " " << rms_bar(rms, RMS_THRESHOLD)
                       << " RMS:" << C_BOLD << (int)rms << C_RESET << std::endl;

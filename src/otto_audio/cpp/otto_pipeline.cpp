@@ -90,7 +90,9 @@ void print_indicador(State s) {
 #define LOCAL_IP       "192.168.123.164"
 #define SAMPLE_RATE    16000
 #define CAPTURE_SECS   3
-#define TIMEOUT_SECS   30
+// TIMEOUT_SECS eliminado el 2026-09-22: ya no hace falta, ESCUCHANDO ahora
+// procesa una sola pregunta por "Hola Otto" y siempre vuelve a HIBERNACION
+// (ver el estado ESCUCHANDO en main()).
 // Bajado de 2000 a 800 el 2026-09-22: con el mic USB-C nuevo (AB13X), el
 // RMS_THRESHOLD se compara contra el promedio de TODO un bloque de
 // CAPTURE_SECS (3s) — un "Hola Otto" (<1s) diluido en 3s de silencio no
@@ -139,11 +141,14 @@ const char* REPITE[] = {
     nullptr
 };
 
+// Cierre tras responder -- reescritas el 2026-09-22: ya NO sigue
+// escuchando después de esto (ver ESCUCHANDO en main()), así que no
+// pueden sonar como si esperaran una respuesta inmediata sin wake word.
 const char* CONSULTA[] = {
-    "Tenes alguna otra pregunta sobre UADE?",
-    "Hay algo mas en lo que te pueda ayudar?",
-    "En que otra cosa te puedo orientar?",
-    "Alguna otra consulta sobre el campus?",
+    "Si tenes otra consulta, decime Hola Otto de nuevo.",
+    "Para otra pregunta, volve a decirme Hola Otto.",
+    "Cualquier otra duda, aca estoy, decime Hola Otto.",
+    "Si necesitas algo mas, llamame con Hola Otto.",
     nullptr
 };
 
@@ -783,7 +788,6 @@ int main(int argc, char const *argv[]) {
     sleep(CAPTURE_SECS);
 
     State estado = HIBERNACION;
-    time_t ultimo_habla = time(nullptr);
     std::cout << C_GREEN C_BOLD "\n╔════════════════════════════════════╗"
           << "\n║   OttoGuide listo en HIBERNACION   ║"
           << "\n║   Decí 'Hola Otto' para activar    ║"
@@ -825,26 +829,32 @@ int main(int argc, char const *argv[]) {
             if (es_wake_word(t)) {
                 std::cout << C_GREEN C_BOLD "\n[OTTO] Wake word detectada -> ESCUCHANDO\n" C_RESET << std::endl;
                 estado = ESCUCHANDO;
-                ultimo_habla = time(nullptr);
                 otto_say(frase_aleatoria(SALUDOS));
                 otto_beep();
             }
         }
 
         // --- ESCUCHANDO: VAD para capturar utterance completa ---
+        // ESCUCHANDO: UNA pregunta por wake word, sin sesion extendida.
+        // Rediseñado el 2026-09-22: antes se quedaba escuchando indefinido
+        // (hasta 30s de timeout) esperando una posible segunda pregunta sin
+        // repetir "Hola Otto" -- patron tipo Alexa/Siri, pensado para un
+        // asistente hogareño con un solo usuario. Ottoman es un robot
+        // publico de campus: en esa ventana extendida, cualquier voz de
+        // CUALQUIER persona que pasara cerca se trataba como continuacion
+        // de la conversacion -- ambiguo y la causa mas probable de
+        // respuestas "raras" (le contestaba a ruido/charla ajena, no a
+        // quien lo desperto). Ahora: captura una utterance, la procesa,
+        // y SIEMPRE vuelve a HIBERNACION -- para preguntar de nuevo hay
+        // que decir "Hola Otto" otra vez. Mas simple y sin ambigüedad de
+        // a quien le esta escuchando.
         else if (estado == ESCUCHANDO) {
             print_indicador(ESCUCHANDO);
 
-            // tomar_utterance espera hasta detectar voz y luego silencio
             auto chunk = tomar_utterance(*vad, 300, 500);
-
             if (chunk.empty()) {
-                // No hubo voz en el tiempo maximo -> verificar timeout
-                if (difftime(time(nullptr), ultimo_habla) > TIMEOUT_SECS) {
-                    std::cout << C_GRAY "\n[OTTO] Timeout -> HIBERNACION" C_RESET << std::endl;
-                    otto_say(frase_aleatoria(DESPEDIDAS));
-                    estado = HIBERNACION;
-                }
+                // No dijo nada -> vuelve a dormir, sin drama.
+                estado = HIBERNACION;
                 continue;
             }
 
@@ -858,12 +868,9 @@ int main(int argc, char const *argv[]) {
             double stt_secs = std::chrono::duration<double>(
                 std::chrono::steady_clock::now() - t_stt_start).count();
             std::cout << C_GRAY "[TIEMPO] STT: " << stt_secs << "s" C_RESET << std::endl;
-            if (texto.empty()) continue;
+            if (texto.empty()) { estado = HIBERNACION; continue; }
 
-            // ════════════════════════════════════════════════════════════════════════════
-            // FILTRO 0: SALIDA PRIORITARIA (intercepta "Chao", "Adiós", etc. ANTES de
-            // cualquier otro filtro que rechace por tamaño/alucinacion)
-            // ════════════════════════════════════════════════════════════════════════════
+            // FILTRO 0: SALIDA PRIORITARIA ("Chao"/"Adiós" en vez de una pregunta real)
             if (es_frase_salida(texto)) {
                 std::cout << C_GREEN "\n[OTTO] Salida detectada -> HIBERNACION\n" C_RESET << std::endl;
                 otto_say(frase_aleatoria(DESPEDIDAS));
@@ -871,21 +878,17 @@ int main(int argc, char const *argv[]) {
                 continue;
             }
 
-            // ════════════════════════════════════════════════════════════════════════════
-            // FILTRO 1: Alucinaciones Whisper (solo si texto NO es despedida)
-            // ════════════════════════════════════════════════════════════════════════════
+            // FILTRO 1: Alucinaciones Whisper
             if (es_alucinacion(texto)) {
                 std::cout << C_GRAY "[FILTRO] \"" << texto << "\"" << C_RESET << std::endl;
+                estado = HIBERNACION;
                 continue;
             }
 
             std::cout << C_WHITE "[STT]" C_RESET " \"" << C_BOLD << texto << C_RESET << "\"" << std::endl;
-            ultimo_habla = time(nullptr);
             std::string t = normalizar(texto);
 
-            // ════════════════════════════════════════════════════════════════════════════
             // FILTRO 2: Despedida formalizada (fallback, por si normalización lo cambia)
-            // ════════════════════════════════════════════════════════════════════════════
             if (es_despedida(t)) {
                 std::cout << C_GRAY "\n[OTTO] Despedida formalizada -> HIBERNACION\n" C_RESET << std::endl;
                 otto_say(frase_aleatoria(DESPEDIDAS));
@@ -893,25 +896,19 @@ int main(int argc, char const *argv[]) {
                 continue;
             }
 
-            // Filtro 1: Validación base (lenguaje español, longitud mínima)
+            // Validación base (lenguaje español, longitud mínima)
             if (!es_texto_valido(texto)) {
                 std::cout << C_GRAY "[FILTRO] Texto invalido para LLM: \"" << texto << "\"" << C_RESET << std::endl;
                 otto_say(frase_aleatoria(REPITE));
                 otto_beep();
+                estado = HIBERNACION;
                 continue;
             }
 
-            // Filtro 2 (Validación semántica, es_consulta_coherente) DESHABILITADO
-            // el 2026-09-22: era una lista fija de vocabulario/patrones
-            // ("uade", "aula", "biblioteca", etc.) que rechazaba localmente
-            // cualquier pregunta que no matcheara esas palabras exactas --
-            // fail-closed (default: rechazar) -- sin que la consulta llegara
-            // nunca a Ollama. El usuario reportó justo esto: "la pregunta no
-            // llega a ningún modelo de IA". Se confía en que Llama 3 8B
-            // maneja bien preguntas raras/ambiguas por sí solo, sin
-            // necesitar este gatekeeper local. Funciones originales
-            // (es_consulta_coherente/seleccionar_rechazo_contextual) quedan
-            // definidas más arriba sin usarse, por si hay que volver atrás.
+            // El filtro semántico de vocabulario fijo (es_consulta_coherente)
+            // sigue deshabilitado (ver nota del 2026-09-22 más arriba, en la
+            // definición de la función) -- se confía en que Llama 3 8B
+            // maneja bien preguntas raras/ambiguas por sí solo.
 
             std::cout << C_YELLOW "[LLM]" C_RESET " Consultando: \"" << texto << "\"" << std::endl;
             estado = PROCESANDO;
@@ -928,8 +925,6 @@ int main(int argc, char const *argv[]) {
                 otto_beep();
             } else {
                 std::cout << "\n" << C_YELLOW "[LLM]" C_RESET " Respuesta: \"" << C_BOLD << respuesta << C_RESET << "\"" << std::endl;
-                // Fusionado en una sola llamada para que otto_beep() suene
-                // inmediatamente al terminar el audio, sin overhead intermedio.
                 auto t_tts_start = std::chrono::steady_clock::now();
                 otto_say(respuesta + " " + frase_aleatoria(CONSULTA));
                 double tts_secs = std::chrono::duration<double>(
@@ -937,7 +932,7 @@ int main(int argc, char const *argv[]) {
                 std::cout << C_GRAY "[TIEMPO] TTS: " << tts_secs << "s" C_RESET << std::endl;
                 otto_beep();
             }
-            estado = ESCUCHANDO;
+            estado = HIBERNACION; // siempre -- una pregunta por "Hola Otto"
         }
     }
 

@@ -10,6 +10,7 @@
 #include <mutex>
 #include <atomic>
 #include <memory>
+#include <cctype>
 #include <cmath>
 #include <cstring>
 #include <unistd.h>
@@ -125,11 +126,14 @@ std::atomic<bool>    running{true};
 unitree::robot::g1::AudioClient* g_audio = nullptr;
 
 // --- Frases aleatorias ------------------------------------------------------
+// Reescritos el 2026-09-23: dos decian "guia del campus"/"robot guia", del
+// enfoque viejo de visitas guiadas. Ahora Otto es el robot de UADE, no un guia
+// de recorridos. Cortos a proposito: los dice antes de cada pregunta.
 const char* SALUDOS[] = {
-    "Hola! Soy OttoMan, el robot guia de UADE. En que te puedo ayudar?",
-    "Bienvenido a UADE! Soy Otto, tu guia del campus. Decime tu pregunta.",
-    "Hola! Que bueno tenerte por aca. Soy Otto. Como te puedo ayudar hoy?",
-    "Buenas! Soy OttoMan. Preguntame lo que quieras sobre UADE.",
+    "Hola! Soy Otto, el robot de UADE. Que queres saber?",
+    "Bienvenido a UADE! Soy Otto. Decime tu pregunta.",
+    "Hola! Soy Otto. En que te puedo ayudar?",
+    "Buenas! Soy Otto. Preguntame lo que quieras sobre UADE.",
     nullptr
 };
 
@@ -509,6 +513,57 @@ std::string ollama_query(const std::string& pregunta) {
     return result;
 }
 
+// --- Limpiar la respuesta del LLM antes de mandarla a voz --------------------
+// Llama 3 8B NO obedece de forma confiable la regla de "sin listas ni markdown"
+// del SYSTEM: ante preguntas de enumeracion insiste en responder con vinetas y
+// asteriscos (medido el 2026-09-23, incluso despues de agregar ejemplos
+// few-shot y la prohibicion explicita). Y eso Piper lo lee literal: "asterisco
+// Ingenieria Industrial asterisco...". Asi que no se le pide al modelo, se
+// limpia aca: es deterministico y no depende de que el modelo colabore.
+std::string limpiar_para_voz(const std::string& texto) {
+    std::string out;
+    out.reserve(texto.size());
+
+    bool inicio_de_linea = true;
+    for (size_t i = 0; i < texto.size(); ++i) {
+        char c = texto[i];
+
+        // Saltos de linea -> espacio: es una sola tirada de voz, no un texto.
+        if (c == '\n' || c == '\r') {
+            inicio_de_linea = true;
+            if (!out.empty() && out.back() != ' ') out += ' ';
+            continue;
+        }
+
+        // Vinetas al principio de linea ("* ", "- ", "1. ") -> se descartan.
+        if (inicio_de_linea) {
+            if (c == ' ' || c == '\t') continue;
+            if (c == '*' || c == '-' || c == '+') {
+                if (i + 1 < texto.size() && (texto[i+1] == ' ' || texto[i+1] == '\t')) continue;
+            }
+            if (isdigit((unsigned char)c) && i + 1 < texto.size()
+                && (texto[i+1] == '.' || texto[i+1] == ')')) { ++i; continue; }
+            inicio_de_linea = false;
+        }
+
+        // Marcas de markdown que no significan nada hablado.
+        if (c == '*' || c == '_' || c == '`' || c == '#') continue;
+
+        out += c;
+    }
+
+    // Espacios repetidos -> uno solo.
+    std::string limpio;
+    limpio.reserve(out.size());
+    for (char c : out) {
+        if (c == ' ' && !limpio.empty() && limpio.back() == ' ') continue;
+        limpio += c;
+    }
+    while (!limpio.empty() && (limpio.front() == ' ')) limpio.erase(limpio.begin());
+    while (!limpio.empty() && (limpio.back() == ' ')) limpio.pop_back();
+    return limpio;
+}
+
 // --- TTS + reproduccion -----------------------------------------------------
 void otto_say(const std::string& texto) {
     std::ofstream f("/tmp/otto_pipe_text.txt");
@@ -632,7 +687,10 @@ float calcular_rms(const std::vector<int16_t>& s) {
 }
 
 // --- Transcribir con Whisper ------------------------------------------------
-std::string transcribir(whisper_context* ctx, const std::vector<int16_t>& pcm_i16) {
+// rapido: usa muestreo greedy (para el chequeo de wake word). Ver el comentario
+// en la eleccion de sampling, mas abajo.
+std::string transcribir(whisper_context* ctx, const std::vector<int16_t>& pcm_i16,
+                         bool rapido = false) {
     // Normalizar amplitud para mejorar precision de Whisper
     float max_val = 1.0f;
     for (auto s : pcm_i16)
@@ -643,7 +701,13 @@ std::string transcribir(whisper_context* ctx, const std::vector<int16_t>& pcm_i1
     for (size_t i = 0; i < pcm_i16.size(); ++i)
         pcm_f32[i] = std::min(1.0f, std::max(-1.0f, (pcm_i16[i] * gain) / 32768.0f));
 
-    whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_BEAM_SEARCH);
+    // rapido=true (HIBERNACION): greedy en vez de beam search. Para decidir si
+    // se dijo "hola otto" no hace falta la calidad del beam, y es bastante mas
+    // rapido -- en HIBERNACION se transcribe todo lo que se escucha, asi que
+    // cada milisegundo se paga muchas veces. Para la pregunta real
+    // (ESCUCHANDO) se sigue usando beam search, ahi la calidad si importa.
+    whisper_full_params params = whisper_full_default_params(
+        rapido ? WHISPER_SAMPLING_GREEDY : WHISPER_SAMPLING_BEAM_SEARCH);
     params.language         = "es";
     params.print_progress   = false;
     params.print_realtime   = false;
@@ -651,7 +715,7 @@ std::string transcribir(whisper_context* ctx, const std::vector<int16_t>& pcm_i1
     params.no_context       = true;
     params.initial_prompt   = WHISPER_PROMPT;
     params.n_threads        = 4;
-    params.beam_search.beam_size = 3;
+    if (!rapido) params.beam_search.beam_size = 3;
     params.no_speech_thold  = 0.4f;
     params.temperature      = 0.0f;
 
@@ -799,7 +863,19 @@ int main(int argc, char const *argv[]) {
           << "\n║   Decí 'Hola Otto' para activar    ║"
           << "\n╚════════════════════════════════════╝\n" C_RESET << std::endl;
           
+    // El indicador se imprime solo al CAMBIAR de estado. Antes se reimprimia en
+    // cada vuelta del loop con "\r": en una terminal se ve bien, pero al correr
+    // con nohup redirigido a un archivo (que es como lo lanza la web) el log
+    // quedaba con cientos de "[◯] HIBERNACION esperando..." pegados en una
+    // linea, ilegible.
+    State estado_impreso = PROCESANDO; // distinto del inicial: fuerza el primer print
+
     while (running) {
+        if (estado != estado_impreso) {
+            print_indicador(estado);
+            std::cout << std::endl;
+            estado_impreso = estado;
+        }
 
         // --- HIBERNACION: VAD por ventanas cortas, igual que ESCUCHANDO ---
         // Antes usaba tomar_audio(CAPTURE_SECS): un bloque ciego de 3s fijo,
@@ -811,33 +887,53 @@ int main(int argc, char const *argv[]) {
         // grabar recien cuando detecta voz sostenida (300ms) y corta en
         // silencio real, sin depender de donde caiga un bloque fijo.
         if (estado == HIBERNACION) {
-            print_indicador(HIBERNACION);
-
-            auto chunk = tomar_utterance(*vad, 300, 500);
+            // ms_max corto (2500): "Hola Otto" dura menos de 1.5s. Con el
+            // default de 8s, cualquier charla ajena cerca del robot se
+            // capturaba entera y se mandaba a Whisper -- medido en el log del
+            // 2026-09-23: 4.2s de GPU para transcribir "Fijate con eso, capaz
+            // que estoy diciendo una boludez...". Y mientras Whisper laburaba,
+            // el pipeline NO estaba escuchando: un "Hola Otto" dicho justo en
+            // ese rato se perdia.
+            auto chunk = tomar_utterance(*vad, 300, 500, 2500);
             if (chunk.empty()) continue;
 
-            float rms = calcular_rms(chunk);
-
-            std::cout << "\n" << C_CYAN "[MIC]" C_RESET " " << rms_bar(rms, RMS_THRESHOLD)
-                      << " RMS:" << C_BOLD << (int)rms << C_RESET << std::endl;
-            std::cout << C_CYAN "[STT]" C_RESET " Transcribiendo..." << std::endl;
-
-            std::string texto = transcribir(wctx, chunk);
-            if (texto.empty()) continue;
-            if (es_alucinacion(texto)) {
-                std::cout << C_GRAY "[FILTRO] \"" << texto << "\"" << C_RESET << std::endl;
+            // Si la captura llego casi al tope, la persona seguia hablando:
+            // nadie dice "Hola Otto" y sigue de largo sin pausa. No vale
+            // gastar Whisper en eso.
+            if (chunk.size() > (size_t)(SAMPLE_RATE * 2200 / 1000)) {
+                std::cout << C_GRAY "[◯] charla larga, no es wake word" C_RESET << std::endl;
                 continue;
             }
 
-            std::cout << C_WHITE "[STT]" C_RESET " \"" << C_BOLD << texto << C_RESET << "\"" << std::endl;
+            // rapido=true -> greedy: en HIBERNACION se transcribe todo lo que
+            // se escucha, asi que la velocidad importa mas que la calidad.
+            std::string texto = transcribir(wctx, chunk, /*rapido=*/true);
+            if (texto.empty()) continue;
+
             std::string t = normalizar(texto);
 
+            // El wake word se chequea ANTES del filtro de alucinaciones (bug
+            // encontrado el 2026-09-23 leyendo el log): "otto otto" esta en la
+            // lista de patrones de alucinacion, asi que un "Hola Otto" que
+            // Whisper transcribia como "Otto Otto" se descartaba y NUNCA
+            // activaba. En el log aparecia como: [FILTRO] "Otto Otto".
             if (es_wake_word(t)) {
-                std::cout << C_GREEN C_BOLD "\n[OTTO] Wake word detectada -> ESCUCHANDO\n" C_RESET << std::endl;
+                float rms = calcular_rms(chunk);
+                std::cout << "\n" << C_CYAN "[MIC]" C_RESET " " << rms_bar(rms, RMS_THRESHOLD)
+                          << " RMS:" << C_BOLD << (int)rms << C_RESET << std::endl;
+                std::cout << C_WHITE "[STT]" C_RESET " \"" << C_BOLD << texto << C_RESET << "\"" << std::endl;
+                std::cout << C_GREEN C_BOLD "[OTTO] Wake word detectada -> ESCUCHANDO" C_RESET << std::endl;
                 estado = ESCUCHANDO;
                 otto_say(frase_aleatoria(SALUDOS));
                 otto_beep();
+                continue;
             }
+
+            // No era el wake word: una sola linea corta y seguimos. Antes se
+            // imprimia la barra de RMS + "Transcribiendo..." + el texto entero
+            // de cada charla ajena, y el log quedaba ilegible.
+            std::cout << C_GRAY "[◯] descartado: \"" << texto.substr(0, 45)
+                      << (texto.size() > 45 ? "...\"" : "\"") << C_RESET << std::endl;
         }
 
         // --- ESCUCHANDO: VAD para capturar utterance completa ---
@@ -855,8 +951,7 @@ int main(int argc, char const *argv[]) {
         // que decir "Hola Otto" otra vez. Mas simple y sin ambigüedad de
         // a quien le esta escuchando.
         else if (estado == ESCUCHANDO) {
-            print_indicador(ESCUCHANDO);
-
+            // El indicador ya lo imprimio el chequeo de cambio de estado arriba.
             auto chunk = tomar_utterance(*vad, 300, 500);
             if (chunk.empty()) {
                 // No dijo nada -> vuelve a dormir, sin drama.
@@ -921,7 +1016,7 @@ int main(int argc, char const *argv[]) {
             print_indicador(PROCESANDO);
 
             auto t_llm_start = std::chrono::steady_clock::now();
-            std::string respuesta = ollama_query(texto);
+            std::string respuesta = limpiar_para_voz(ollama_query(texto));
             double llm_secs = std::chrono::duration<double>(
                 std::chrono::steady_clock::now() - t_llm_start).count();
             std::cout << C_GRAY "[TIEMPO] LLM: " << llm_secs << "s" C_RESET << std::endl;

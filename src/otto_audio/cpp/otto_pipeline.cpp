@@ -10,6 +10,7 @@
 #include <mutex>
 #include <atomic>
 #include <memory>
+#include <functional>
 #include <cctype>
 #include <cmath>
 #include <cstring>
@@ -142,11 +143,16 @@ unitree::robot::g1::AudioClient* g_audio = nullptr;
 // Reescritos el 2026-09-23: dos decian "guia del campus"/"robot guia", del
 // enfoque viejo de visitas guiadas. Ahora Otto es el robot de UADE, no un guia
 // de recorridos. Cortos a proposito: los dice antes de cada pregunta.
+// El saludo esta en el camino critico de la activacion: se dice ENTERO antes de
+// que la persona pueda hablar. Medido el 2026-09-23: la frase mas larga que
+// habia aca tardaba 3.96s en decirse, mas 1.18s que Piper tardaba en
+// sintetizarla. Se acortaron todas (~3.0s) y se pre-generan al arrancar, asi el
+// 1.18s de Piper sale del camino (ver pregenerar_saludos()).
 const char* SALUDOS[] = {
-    "Hola! Soy Otto, el robot de UADE. Que queres saber?",
-    "Bienvenido a UADE! Soy Otto. Decime tu pregunta.",
-    "Hola! Soy Otto. En que te puedo ayudar?",
-    "Buenas! Soy Otto. Preguntame lo que quieras sobre UADE.",
+    "Hola, soy Otto. En que te puedo ayudar?",
+    "Hola! Soy Otto. Decime tu pregunta.",
+    "Hola, soy Otto. Te escucho.",
+    "Buenas! Soy Otto. En que te puedo ayudar?",
     nullptr
 };
 
@@ -417,54 +423,24 @@ bool es_wake_word(const std::string& t) {
     return false;
 }
 
-// Recibe texto ya pasado por normalizar(). Se busca por palabra entera: con
-// find() a secas "chao" matcheaba adentro de cualquier cosa y, peor, "listo"
-// pelado convertía "¿está listo el edificio nuevo?" en una despedida.
-bool es_despedida(const std::string& t) {
-    for (auto& w : {"chau","chao","adios","hasta luego","hasta pronto",
-                    "gracias eso es todo","no mas preguntas",
-                    "chau otto","chao otto","adios otto","hasta luego otto",
-                    "gracias otto"})
+// Despedida explicita. Recibe texto ya pasado por normalizar().
+//
+// Antes habia DOS funciones (es_frase_salida sobre el texto crudo y es_despedida
+// sobre el normalizado) con listas parecidas de palabras sueltas: "chau",
+// "adios", "ya", "listo". Eso se comia preguntas legitimas -- "¿UADE apoya a
+// los emprendedores?" salia por "ya" dentro de "apoya" -- asi que quedaron
+// unificadas en una sola que EXIGE el nombre del robot. Es el unico filtro que
+// corre antes del LLM sobre la pregunta, y con el nombre pedido no hay
+// ambiguedad posible.
+bool es_despedida_de_otto(const std::string& t) {
+    if (!contiene_palabra(t, "otto")) return false;
+    // Solo palabras de despedida inequivocas. NO van "ya", "listo" ni "gracias"
+    // aunque este el nombre: la gente le habla al robot por su nombre, y
+    // "Otto, ¿ya estan las inscripciones?" o "Otto, gracias, ¿que carreras
+    // tiene UADE?" son preguntas, no despedidas.
+    for (auto& w : {"chau","chao","adios","bye",
+                    "hasta luego","hasta pronto","nos vemos","hasta la vista"})
         if (contiene_palabra(t, w)) return true;
-    return false;
-}
-
-// --- Detectar frases de salida/cierre (alta prioridad, antes de filtros) ----
-// @TASK: Interceptar despedidas cortas (ej: "Chao") ANTES de es_alucinacion()
-// @INPUT: texto raw de Whisper (puede ser muy corto)
-// @OUTPUT: true si usuario quiere terminar la sesión
-bool es_frase_salida(const std::string& texto) {
-    if (texto.empty()) return false;
-
-    // STEP 1: Minúsculas y sin acentos (plegar() ya cubre "adiós" -> "adios")
-    std::string tl = plegar(texto);
-
-    // STEP 2: Palabras clave de salida (cobertura alta, ambigüedad baja)
-    //
-    // Acá estaban "ya" y "listo" pelados, y era un agujero grande: este filtro
-    // corre ANTES de todo, sobre la pregunta real, así que "¿ya están abiertas
-    // las inscripciones?" o "¿está listo el edificio?" hacían que Otto se
-    // despidiera en vez de contestar. Se quedan sólo con el nombre del robot
-    // ("listo otto", "ya otto"), que es inequívoco. Además ahora la búsqueda
-    // es por palabra entera: con find() a secas "ya" matcheaba adentro de
-    // "apoya", "incluya", "construya", "cuya"...
-    static const char* SALIDAS[] = {
-        // Despedidas muy cortas (lo que Whisper captura de hablantes rápidos)
-        "chao", "chau", "adios", "bye",
-        // Despedidas formales
-        "hasta luego", "hasta pronto", "nos vemos", "hasta la vista",
-        // Con nombre del robot
-        "gracias otto", "gracias ottoman", "listo otto", "ya otto",
-        "chao otto", "chau otto", "adios otto",
-        nullptr
-    };
-
-    // STEP 3: Búsqueda directa con early exit
-    for (int i = 0; SALIDAS[i]; ++i) {
-        if (contiene_palabra(tl, SALIDAS[i]))
-            return true;
-    }
-
     return false;
 }
 
@@ -654,7 +630,55 @@ std::string seleccionar_rechazo_contextual(const std::string& texto) {
 }
 
 // --- HTTP POST para Ollama --------------------------------------------------
-std::string ollama_query(const std::string& pregunta) {
+// Decodifica un valor JSON escapado ("\\n", "\\"", "\\\\") a texto plano.
+static std::string desescapar_json(const std::string& src) {
+    std::string out;
+    out.reserve(src.size());
+    for (size_t i = 0; i < src.size(); ++i) {
+        if (src[i] != '\\' || i + 1 >= src.size()) { out += src[i]; continue; }
+        switch (src[++i]) {
+            case 'n': case 'r': case 't': out += ' ';  break;
+            case '"':                     out += '"';  break;
+            case '\\':                    out += '\\'; break;
+            default:                      out += src[i];
+        }
+    }
+    return out;
+}
+
+// Extrae el valor de "response" de una linea NDJSON de Ollama, o "" si no hay.
+static std::string campo_response(const std::string& linea) {
+    static const std::string KEY = "\"response\":\"";
+    size_t a = linea.find(KEY);
+    if (a == std::string::npos) return "";
+    a += KEY.size();
+    // Buscar la comilla de cierre sin cortar en una comilla escapada.
+    for (size_t i = a; i < linea.size(); ++i) {
+        if (linea[i] == '\\') { ++i; continue; }
+        if (linea[i] == '"') return desescapar_json(linea.substr(a, i - a));
+    }
+    return "";
+}
+
+// --- Consulta a Ollama, en streaming ----------------------------------------
+// Antes se pedia con "stream":false y se esperaba la respuesta COMPLETA antes
+// de empezar a hablar. Medido el 2026-09-23: 100 tokens a 9.3 tok/s = 10.9s de
+// silencio absoluto antes de que Otto abriera la boca (y el prompt del Modelfile
+// no tiene nada que ver: se evalua en 0.2s porque Ollama lo tiene cacheado).
+// Ahora se lee token por token y se llama a `on_oracion` en cuanto hay una
+// oracion completa, asi Otto empieza a hablar a los ~2.5s. El total no baja,
+// pero la espera percibida se derrumba.
+//
+// Mientras `on_oracion` habla (segundos) no se lee el socket. No es problema:
+// la respuesta entera son ~500 bytes, entra de sobra en el buffer del socket, y
+// de hecho es justo lo que se quiere -- el modelo sigue generando la oracion
+// siguiente mientras Otto dice la actual.
+//
+// @INPUT: pregunta; on_oracion = se invoca con cada oracion completa
+// @OUTPUT: la respuesta completa (para loguear), o "" si fallo la conexion
+std::string ollama_query_stream(
+        const std::string& pregunta,
+        const std::function<void(const std::string&)>& on_oracion) {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) return "";
 
@@ -677,29 +701,53 @@ std::string ollama_query(const std::string& pregunta) {
     // justo el caso de uso real (alguien pregunta, pasa un rato, otro
     // pregunta). Medido el 2026-09-23: 51s en frío vs 3.7s en caliente.
     std::string body = "{\"model\":\"otto-llama3\",\"prompt\":\"" + p
-                     + "\",\"stream\":false,\"think\":false,\"keep_alive\":-1}";
+                     + "\",\"stream\":true,\"think\":false,\"keep_alive\":-1}";
     std::string req  = "POST /api/generate HTTP/1.0\r\n"
                        "Host: 127.0.0.1\r\n"
                        "Content-Type: application/json\r\n"
                        "Content-Length: " + std::to_string(body.size()) + "\r\n\r\n" + body;
     send(sock, req.c_str(), req.size(), 0);
 
-    std::string resp; char buf[4096]; int n;
-    while ((n = recv(sock, buf, sizeof(buf)-1, 0)) > 0) { buf[n] = 0; resp += buf; }
-    close(sock);
+    std::string completa, oracion, pendiente;
+    char buf[4096];
+    int n;
 
-    std::string key = "\"response\":\"";
-    size_t s = resp.find(key);
-    if (s == std::string::npos) return "";
-    s += key.size();
-    std::string result;
-    for (size_t i = s; i < resp.size(); ++i) {
-        if (resp[i] == '\\' && i+1 < resp.size() && resp[i+1] == '"') { result += '"'; ++i; }
-        else if (resp[i] == '\\' && i+1 < resp.size() && resp[i+1] == 'n') { result += ' '; ++i; }
-        else if (resp[i] == '"') break;
-        else result += resp[i];
+    // Se corta la oracion en . ! ? ... pero recien pasados MIN_ORACION
+    // caracteres, para no mandarle a Piper fragmentos de dos palabras (que
+    // suenan cortados) ni partir un numero decimal. MAX_ORACION es la valvula
+    // de escape para una respuesta sin puntuacion.
+    const size_t MIN_ORACION = 40, MAX_ORACION = 220;
+
+    auto soltar = [&]() {
+        if (oracion.empty()) return;
+        on_oracion(oracion);
+        oracion.clear();
+    };
+
+    while ((n = recv(sock, buf, sizeof(buf) - 1, 0)) > 0) {
+        buf[n] = 0;
+        pendiente += buf;
+        // Ollama responde NDJSON: un objeto por linea. Si el servidor usa
+        // Transfer-Encoding: chunked, las lineas de tamanio hexadecimal no
+        // contienen "response" y campo_response() las ignora sola, asi que no
+        // hace falta un parser de chunked.
+        size_t nl;
+        while ((nl = pendiente.find('\n')) != std::string::npos) {
+            std::string linea = pendiente.substr(0, nl);
+            pendiente.erase(0, nl + 1);
+            std::string trozo = campo_response(linea);
+            if (trozo.empty()) continue;
+            completa += trozo;
+            oracion  += trozo;
+            char ult = oracion.empty() ? 0 : oracion[oracion.size() - 1];
+            bool fin_oracion = (ult == '.' || ult == '!' || ult == '?');
+            if ((fin_oracion && oracion.size() >= MIN_ORACION) || oracion.size() >= MAX_ORACION)
+                soltar();
+        }
     }
-    return result;
+    close(sock);
+    soltar();   // lo que quedo sin punto final
+    return completa;
 }
 
 // --- Limpiar la respuesta del LLM antes de mandarla a voz --------------------
@@ -778,7 +826,13 @@ std::string limpiar_para_voz(const std::string& texto) {
 }
 
 // --- TTS + reproduccion -----------------------------------------------------
-void otto_say(const std::string& texto) {
+// Separado en generar / reproducir para poder pre-generar audios fijos (los
+// saludos) y sacar el tiempo de Piper del camino critico. Ver
+// pregenerar_saludos().
+//
+// @INPUT: texto a sintetizar; salida = ruta del WAV final (16kHz mono s16)
+// @OUTPUT: false si Piper o ffmpeg no dejaron un WAV usable
+bool tts_generar(const std::string& texto, const std::string& salida) {
     std::ofstream f("/tmp/otto_pipe_text.txt");
     f << texto;
     f.close();
@@ -787,13 +841,26 @@ void otto_say(const std::string& texto) {
            " --model " PIPER_VOICE
            " --output_file /tmp/otto_pipe_raw.wav >/dev/null 2>&1");
 
-    system("ffmpeg -y -i /tmp/otto_pipe_raw.wav -ar 16000 -ac 1 -sample_fmt s16 "
-           "-af \"volume=3.0\" /tmp/otto_pipe.wav -loglevel quiet");
+    std::string cmd = "ffmpeg -y -i /tmp/otto_pipe_raw.wav -ar 16000 -ac 1 "
+                      "-sample_fmt s16 -af \"volume=3.0\" " + salida
+                    + " -loglevel quiet";
+    system(cmd.c_str());
 
     int32_t sr = -1; int8_t ch = 0; bool ok = false;
-    auto pcm = ReadWave("/tmp/otto_pipe.wav", &sr, &ch, &ok);
+    ReadWave(salida, &sr, &ch, &ok);
     if (!ok || sr != 16000 || ch != 1) {
-        std::cerr << "[TTS] Error WAV" << std::endl; return;
+        std::cerr << "[TTS] Error generando WAV para: " << texto.substr(0, 40)
+                  << std::endl;
+        return false;
+    }
+    return true;
+}
+
+void reproducir_wav(const std::string& ruta) {
+    int32_t sr = -1; int8_t ch = 0; bool ok = false;
+    auto pcm = ReadWave(ruta, &sr, &ch, &ok);
+    if (!ok || sr != 16000 || ch != 1) {
+        std::cerr << "[TTS] Error WAV: " << ruta << std::endl; return;
     }
 
     std::string sid = std::to_string(unitree::common::GetCurrentTimeMillisecond());
@@ -820,6 +887,34 @@ void otto_say(const std::string& texto) {
         std::lock_guard<std::mutex> lock(buf_mutex);
         audio_buffer.clear();
     }
+}
+
+void otto_say(const std::string& texto) {
+    if (tts_generar(texto, "/tmp/otto_pipe.wav"))
+        reproducir_wav("/tmp/otto_pipe.wav");
+}
+
+// Saludos pre-generados. Piper tarda ~1.18s en sintetizar un saludo (medido en
+// el robot el 2026-09-23) y son 4 frases fijas, asi que se generan una sola vez
+// al arrancar -- durante la carga de Whisper, que ya se lleva ~15s y no le
+// molesta compartir. Al detectar el wake word solo queda reproducir un WAV.
+std::vector<std::string> saludos_wav;
+
+void pregenerar_saludos() {
+    for (int i = 0; SALUDOS[i]; ++i) {
+        std::string ruta = "/tmp/otto_saludo_" + std::to_string(i) + ".wav";
+        if (tts_generar(SALUDOS[i], ruta)) saludos_wav.push_back(ruta);
+    }
+    std::cout << C_GRAY "[TTS] Saludos pre-generados: " << saludos_wav.size()
+              << "/" << ((int)(sizeof(SALUDOS)/sizeof(SALUDOS[0])) - 1)
+              << C_RESET << std::endl;
+}
+
+// Si la pre-generacion fallo se cae al camino normal (sintetizar en el momento)
+// en vez de quedarse mudo: degradacion gradual, igual que el VAD con RmsVad.
+void otto_saludar() {
+    if (saludos_wav.empty()) { otto_say(frase_aleatoria(SALUDOS)); return; }
+    reproducir_wav(saludos_wav[rand() % saludos_wav.size()]);
 }
 
 // Indicador sonoro: tono 880Hz 250ms cuando Otto activa ESCUCHANDO
@@ -932,6 +1027,19 @@ std::string transcribir(whisper_context* ctx, const std::vector<int16_t>& pcm_i1
     if (!rapido) params.beam_search.beam_size = 3;
     params.no_speech_thold  = 0.4f;
     params.temperature      = 0.0f;
+
+    // audio_ctx: por defecto Whisper rellena el audio hasta la ventana entera
+    // de 30s y el encoder paga ese costo completo, aunque el chunk tenga 2
+    // segundos. En la pasada del wake word el chunk nunca pasa de 2.2s, asi que
+    // recortar el contexto del encoder a 256 frames (= 5.12s, margen de sobra)
+    // baja la pasada de ~1.0s a ~0.3s. Medido en el robot el 2026-09-23 con
+    // whisper-cli sobre un WAV de 2.86s: 1500 -> 3.87s, 512 -> 3.32s,
+    // 256 -> 3.18s de wall time (de los cuales ~2.9s son cargar el modelo, asi
+    // que la inferencia real cae ~3x). Con 128 se rompe: el decoder entra en
+    // loop, repite la frase y tarda 19s.
+    // En la pregunta real se deja el default: ahi la calidad importa y el chunk
+    // puede llegar a 8s.
+    if (rapido) params.audio_ctx = 256;
 
     auto t0 = std::chrono::steady_clock::now();
     if (whisper_full(ctx, params, pcm_f32.data(), (int)pcm_f32.size()) != 0)
@@ -1047,6 +1155,10 @@ int main(int argc, char const *argv[]) {
     }
     std::cout << "[OK] Whisper cargado en GPU." << std::endl;
 
+    // Sintetizar los saludos ahora, no cuando alguien diga "Hola Otto": saca
+    // los ~1.18s de Piper del camino critico de la activacion.
+    pregenerar_saludos();
+
     // VAD: Silero (local, ONNX Runtime) por defecto -- distingue voz real
     // de ruido, a diferencia del umbral de RMS que reemplaza (ver
     // TODO.md, "Mejora de detección de voz"). Si no carga (librería o
@@ -1138,7 +1250,7 @@ int main(int argc, char const *argv[]) {
                 std::cout << C_WHITE "[STT]" C_RESET " \"" << C_BOLD << texto << C_RESET << "\"" << std::endl;
                 std::cout << C_GREEN C_BOLD "[OTTO] Wake word detectada -> ESCUCHANDO" C_RESET << std::endl;
                 estado = ESCUCHANDO;
-                otto_say(frase_aleatoria(SALUDOS));
+                otto_saludar();
                 otto_beep();
                 continue;
             }
@@ -1185,9 +1297,25 @@ int main(int argc, char const *argv[]) {
             std::cout << C_GRAY "[TIEMPO] STT: " << stt_secs << "s" C_RESET << std::endl;
             if (texto.empty()) { estado = HIBERNACION; continue; }
 
-            // FILTRO 0: SALIDA PRIORITARIA ("Chao"/"Adiós" en vez de una pregunta real)
-            if (es_frase_salida(texto)) {
-                std::cout << C_GREEN "\n[OTTO] Salida detectada -> HIBERNACION\n" C_RESET << std::endl;
+            // Se imprime la transcripcion ANTES de cualquier filtro. Antes se
+            // imprimia despues, y cuando un filtro se comia la pregunta el log
+            // decia que la habia descartado pero no QUE habia escuchado -- justo
+            // el caso que hay que diagnosticar. (Prueba del 2026-09-23: dos de
+            // tres preguntas murieron en el filtro de salida y no hubo forma de
+            // saber cual era el texto.)
+            std::cout << C_WHITE "[STT]" C_RESET " \"" << C_BOLD << texto << C_RESET << "\"" << std::endl;
+
+            // FILTRO 0: despedida. Ahora EXIGE el nombre del robot ("chau otto"),
+            // no alcanza un "chau" suelto. Con el diseño actual -- una pregunta
+            // por "Hola Otto", sin sesion extendida -- no hay ninguna sesion de
+            // la cual salir: la persona dice el wake word justamente porque
+            // quiere preguntar algo, asi que este filtro solo podia restar. Y
+            // restaba: en la prueba del 2026-09-23 se comio dos de tres
+            // preguntas. Con el nombre pedido el falso positivo es practicamente
+            // imposible ("chau otto" no aparece dentro de una pregunta) y Otto
+            // se sigue despidiendo lindo si alguien efectivamente se despide.
+            if (es_despedida_de_otto(normalizar(texto))) {
+                std::cout << C_GREEN "[OTTO] Despedida -> HIBERNACION" C_RESET << std::endl;
                 otto_say(frase_aleatoria(DESPEDIDAS));
                 estado = HIBERNACION;
                 continue;
@@ -1195,25 +1323,14 @@ int main(int argc, char const *argv[]) {
 
             // FILTRO 1: Alucinaciones Whisper
             if (es_alucinacion(texto)) {
-                std::cout << C_GRAY "[FILTRO] \"" << texto << "\"" << C_RESET << std::endl;
-                estado = HIBERNACION;
-                continue;
-            }
-
-            std::cout << C_WHITE "[STT]" C_RESET " \"" << C_BOLD << texto << C_RESET << "\"" << std::endl;
-            std::string t = normalizar(texto);
-
-            // FILTRO 2: Despedida formalizada (fallback, por si normalización lo cambia)
-            if (es_despedida(t)) {
-                std::cout << C_GRAY "\n[OTTO] Despedida formalizada -> HIBERNACION\n" C_RESET << std::endl;
-                otto_say(frase_aleatoria(DESPEDIDAS));
+                std::cout << C_GRAY "[FILTRO] alucinacion -> HIBERNACION" C_RESET << std::endl;
                 estado = HIBERNACION;
                 continue;
             }
 
             // Validación base (lenguaje español, longitud mínima)
             if (!es_texto_valido(texto)) {
-                std::cout << C_GRAY "[FILTRO] Texto invalido para LLM: \"" << texto << "\"" << C_RESET << std::endl;
+                std::cout << C_GRAY "[FILTRO] texto invalido para el LLM -> pido que repita" C_RESET << std::endl;
                 otto_say(frase_aleatoria(REPITE));
                 otto_beep();
                 estado = HIBERNACION;
@@ -1235,22 +1352,41 @@ int main(int argc, char const *argv[]) {
             estado = PROCESANDO;
             print_indicador(PROCESANDO);
 
+            // Streaming: Otto habla cada oracion en cuanto el modelo la
+            // termina, en vez de esperar la respuesta entera. El total no baja
+            // (el cuello es 9.3 tok/s de generacion) pero la espera hasta la
+            // primera palabra pasa de ~11s a ~2.5s.
             auto t_llm_start = std::chrono::steady_clock::now();
-            std::string respuesta = limpiar_para_voz(ollama_query(pregunta));
-            double llm_secs = std::chrono::duration<double>(
-                std::chrono::steady_clock::now() - t_llm_start).count();
-            std::cout << C_GRAY "[TIEMPO] LLM: " << llm_secs << "s" C_RESET << std::endl;
+            auto desde_inicio = [&]() {
+                return std::chrono::duration<double>(
+                    std::chrono::steady_clock::now() - t_llm_start).count();
+            };
 
-            if (respuesta.empty()) {
+            bool hablo = false;
+            std::string respuesta = ollama_query_stream(pregunta,
+                [&](const std::string& frase) {
+                    std::string limpia = limpiar_para_voz(frase);
+                    if (limpia.empty()) return;
+                    if (!hablo) {
+                        std::cout << C_GRAY "[TIEMPO] primera oracion a los "
+                                  << desde_inicio() << "s" C_RESET << std::endl;
+                        hablo = true;
+                    }
+                    std::cout << C_YELLOW "[TTS]" C_RESET " \"" << limpia << "\"" << std::endl;
+                    otto_say(limpia);
+                });
+
+            if (!hablo) {
+                // Ni una oracion: se cayo la conexion con Ollama o vino vacio.
+                std::cout << C_GRAY "[LLM] sin respuesta -> pido que repita" C_RESET << std::endl;
                 otto_say(frase_aleatoria(REPITE));
                 otto_beep();
             } else {
-                std::cout << "\n" << C_YELLOW "[LLM]" C_RESET " Respuesta: \"" << C_BOLD << respuesta << C_RESET << "\"" << std::endl;
-                auto t_tts_start = std::chrono::steady_clock::now();
-                otto_say(respuesta + " " + frase_aleatoria(CONSULTA));
-                double tts_secs = std::chrono::duration<double>(
-                    std::chrono::steady_clock::now() - t_tts_start).count();
-                std::cout << C_GRAY "[TIEMPO] TTS: " << tts_secs << "s" C_RESET << std::endl;
+                otto_say(frase_aleatoria(CONSULTA));
+                std::cout << "\n" << C_YELLOW "[LLM]" C_RESET " Respuesta completa: \""
+                          << C_BOLD << respuesta << C_RESET << "\"" << std::endl;
+                std::cout << C_GRAY "[TIEMPO] total LLM+TTS: " << desde_inicio()
+                          << "s" C_RESET << std::endl;
                 otto_beep();
             }
             estado = HIBERNACION; // siempre -- una pregunta por "Hola Otto"

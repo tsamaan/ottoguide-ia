@@ -112,7 +112,20 @@ void print_indicador(State s) {
 #define SDK_VOLUME     70
 
 #define WHISPER_MODEL  "/home/unitree/Desktop/whisper.cpp/models/ggml-large-v3-turbo.bin"
-#define WHISPER_PROMPT "UADE Otto OttoGuide"
+// initial_prompt de Whisper: condiciona el decoder, igual que si fuera el
+// texto que venía antes. Son DOS prompts distintos a propósito:
+//  - WAKE: el de HIBERNACION. Va cortísimo y NO contiene la frase "hola otto".
+//    El initial_prompt es lo primero que Whisper alucina sobre silencio o
+//    ruido, así que tener la frase completa acá haría que Otto se despierte
+//    solo. Sólo sesga la ortografía del nombre.
+//  - PREGUNTA: el de la pregunta real. Una frase natural con "UADE" en
+//    contexto sesga muchísimo mejor que una lista de palabras sueltas, y es
+//    la mitad de la solución al problema de que "UADE" volvía como "uate",
+//    "u a de" o "guade" (la otra mitad es corregir_uade(), más abajo).
+#define WHISPER_PROMPT_WAKE     "Otto."
+#define WHISPER_PROMPT_PREGUNTA \
+    "Conversación en la UADE, la Universidad Argentina de la Empresa. " \
+    "Preguntas sobre carreras, campus e ingreso a UADE."
 #define PIPER_BIN      "/home/unitree/piper/piper"
 #define PIPER_VOICE    "/home/unitree/piper/voices/es_MX-gevy-high.onnx"
 #define NET_IFACE      "eth0"
@@ -171,65 +184,229 @@ std::string frase_aleatoria(const char** lista) {
     return lista[rand() % n];
 }
 
+// --- Frontera de palabra ----------------------------------------------------
+// Todos los filtros de este archivo buscaban sus patrones con find() a secas y
+// eso muerde fuerte en español: "ya" (patrón de despedida) matchea adentro de
+// "apoya", así que "¿UADE apoya a los emprendedores?" se tomaba como un chau y
+// la pregunta nunca llegaba al modelo; "uate" matchea adentro de "Guatemala";
+// "ende" (patrón de alucinación) matchea adentro de "entiende" y "depende".
+// Acá se exige que el patrón caiga en frontera de palabra.
+//
+// Los bytes >= 0x80 cuentan como letra: así una vocal acentuada (2 bytes en
+// UTF-8) no se parte al medio y no crea una frontera falsa.
+static bool es_letra(unsigned char c) {
+    return std::isalnum(c) || c >= 0x80;
+}
+
+static bool frontera(const std::string& heno, size_t pos, size_t largo) {
+    bool izq = (pos == 0) || !es_letra((unsigned char)heno[pos - 1]);
+    size_t fin = pos + largo;
+    bool der = (fin >= heno.size()) || !es_letra((unsigned char)heno[fin]);
+    return izq && der;
+}
+
+bool contiene_palabra(const std::string& heno, const std::string& aguja) {
+    if (aguja.empty()) return false;
+    for (size_t p = heno.find(aguja); p != std::string::npos;
+         p = heno.find(aguja, p + 1))
+        if (frontera(heno, p, aguja.size())) return true;
+    return false;
+}
+
+int contar_palabra(const std::string& heno, const std::string& aguja) {
+    if (aguja.empty()) return 0;
+    int n = 0;
+    for (size_t p = heno.find(aguja); p != std::string::npos;
+         p = heno.find(aguja, p + 1))
+        if (frontera(heno, p, aguja.size())) ++n;
+    return n;
+}
+
+// Minúsculas y sin acentos, para comparar contra patrones ASCII. ::tolower es
+// byte a byte y no toca UTF-8, así que las vocales acentuadas se mapean acá.
+std::string plegar(const std::string& s) {
+    static const struct { const char* de; char a; } ACENTOS[] = {
+        {"á",'a'}, {"é",'e'}, {"í",'i'}, {"ó",'o'}, {"ú",'u'}, {"ü",'u'}, {"ñ",'n'},
+        {"Á",'a'}, {"É",'e'}, {"Í",'i'}, {"Ó",'o'}, {"Ú",'u'}, {"Ü",'u'}, {"Ñ",'n'},
+        {nullptr, 0}
+    };
+    std::string out;
+    out.reserve(s.size());
+    for (size_t i = 0; i < s.size(); ) {
+        bool hit = false;
+        for (int k = 0; ACENTOS[k].de; ++k) {
+            size_t n = strlen(ACENTOS[k].de);
+            if (s.compare(i, n, ACENTOS[k].de) == 0) {
+                out += ACENTOS[k].a;
+                i += n;
+                hit = true;
+                break;
+            }
+        }
+        if (!hit) out += (char)std::tolower((unsigned char)s[i++]);
+    }
+    return out;
+}
+
+// --- Corregir la sigla UADE -------------------------------------------------
+// "UADE" es la palabra más importante del vocabulario de Otto y la que Whisper
+// escribe peor: es una sigla que en español se pronuncia como una palabra
+// ("ua-de"), así que el decoder la devuelve como "uade", "Uadé", "uate",
+// "U.A.D.E.", "u a de", "guade"... Si la pregunta llega al modelo sin la sigla,
+// el modelo no sabe de qué universidad le están hablando y contesta cualquier
+// cosa. Se atacan las dos puntas: WHISPER_PROMPT_PREGUNTA sesga el decoder y
+// esta función garantiza el resultado.
+//
+// A diferencia de normalizar(), esta NO baja todo a minúsculas: devuelve la
+// oración original con la sigla en su forma canónica, porque este es el texto
+// que después se le manda al LLM.
+//
+// @INPUT: texto crudo de Whisper
+// @OUTPUT: el mismo texto con toda variante de la sigla reemplazada por "UADE"
+static const char* UADE_VARIANTES[] = {
+    "uade", "uad", "uate", "uage", "uadi", "uader",
+    "puade", "wuade", "guade", "buade", "huade", "juade",
+    "ude",
+    nullptr
+};
+
+// Formas deletreadas: la sigla parte en varios tokens ("u a de", "U.A.D.E.").
+// Se aceptan por la concatenación de las letras, no por una lista de espacios.
+static const char* UADE_CONCAT[] = { "uade", "uhade", nullptr };
+
+namespace {
+struct Token { std::string texto; bool palabra; };
+
+std::vector<Token> tokenizar(const std::string& s) {
+    std::vector<Token> tks;
+    size_t i = 0;
+    while (i < s.size()) {
+        bool pal = es_letra((unsigned char)s[i]);
+        size_t j = i;
+        while (j < s.size() && es_letra((unsigned char)s[j]) == pal) ++j;
+        tks.push_back({s.substr(i, j - i), pal});
+        i = j;
+    }
+    return tks;
+}
+
+bool en_lista(const char* const* lista, const std::string& v) {
+    for (int k = 0; lista[k]; ++k)
+        if (v == lista[k]) return true;
+    return false;
+}
+} // namespace
+
+std::string corregir_uade(const std::string& texto) {
+    std::vector<Token> tks = tokenizar(texto);
+    std::string out;
+    for (size_t i = 0; i < tks.size(); ++i) {
+        if (!tks[i].palabra) { out += tks[i].texto; continue; }
+
+        // Se prueban primero los runs largos: "u a d e" antes que "u" sola.
+        size_t consume = 0;
+        for (size_t largo = 4; largo >= 1; --largo) {
+            std::string concat;
+            size_t ultimo = i, vistas = 0;
+            bool ok = true;
+            for (size_t j = i; j < tks.size() && vistas < largo; ++j) {
+                if (tks[j].palabra) {
+                    concat += plegar(tks[j].texto);
+                    ultimo = j;
+                    ++vistas;
+                } else if (vistas > 0) {
+                    // Entre letra y letra de la sigla sólo se tolera un
+                    // separador corto (" ", ". ", "-"). Un salto de línea o
+                    // algo más largo ya es otra frase.
+                    const std::string& sep = tks[j].texto;
+                    if (sep.size() > 2 || sep.find('\n') != std::string::npos) {
+                        ok = false;
+                        break;
+                    }
+                }
+            }
+            if (!ok || vistas != largo) continue;
+            bool match = (largo == 1) ? en_lista(UADE_VARIANTES, concat)
+                                      : en_lista(UADE_CONCAT, concat);
+            if (match) { consume = ultimo - i + 1; break; }
+        }
+
+        if (consume) {
+            out += "UADE";
+            i += consume - 1;
+        } else {
+            out += tks[i].texto;
+        }
+    }
+    return out;
+}
+
 // --- Normalizar texto -------------------------------------------------------
+// Forma canónica para que los filtros (wake word, despedida) comparen contra
+// una sola versión del texto: sigla corregida, minúsculas, sin acentos.
+// Antes esto hacía reemplazos de substring a mano ({"uate","uade"}, ...), lo
+// que además de duplicar la lista de variantes corrompía palabras que la
+// contenían ("Guatemala" -> "Guademala"). Ahora la sigla la maneja
+// corregir_uade(), que trabaja por token.
 std::string normalizar(const std::string& raw) {
-    std::string s = raw;
-    std::transform(s.begin(), s.end(), s.begin(), ::tolower);
-    struct { const char* from; const char* to; } fixes[] = {
-        {"puade","uade"}, {"u ade","uade"}, {"wuade","uade"}, {"u-ade","uade"}, {"Guay","uade"}, 
-        {"uate", "uade"},{"uage", "uade"}, {"uadi", "uade"}, {"u-a-d-e", "uade"}, {"uáde", "uade"}, {"wuade", "uade"}, {"uh ade", "uade"},
-        {"otoman","otto"}, {"otto mann","otto"}, {"ottoman","otto"}, {"otto man","otto"},
+    std::string s = plegar(corregir_uade(raw));
+
+    // Variantes del nombre del robot: es lo único que le importa al wake word.
+    static const struct { const char* de; const char* a; } NOMBRE[] = {
+        {"otto mann", "otto"}, {"otto man", "otto"},
+        {"ottoman", "otto"}, {"otoman", "otto"},
         {nullptr, nullptr}
     };
-    for (int i = 0; fixes[i].from; ++i) {
-        size_t p;
-        while ((p = s.find(fixes[i].from)) != std::string::npos)
-            s.replace(p, strlen(fixes[i].from), fixes[i].to);
+    for (int i = 0; NOMBRE[i].de; ++i) {
+        size_t pos;
+        while ((pos = s.find(NOMBRE[i].de)) != std::string::npos)
+            s.replace(pos, strlen(NOMBRE[i].de), NOMBRE[i].a);
     }
     return s;
 }
 
 // --- Filtro anti-alucinaciones ----------------------------------------------
+// Dos listas en vez de una: antes había una sola y el código decidía sobre la
+// marcha, con casos especiales por nombre (`p == "ottoguide"`), si el patrón
+// alcanzaba con aparecer una vez o tenía que repetirse. Eso dejaba dos huecos:
+//   - "suscribite", "sous-titrage" y "radio-canada" exigían DOS apariciones, y
+//     con una sola ya es una alucinación cantada.
+//   - el patrón de subtitulado era "subtitl", que es el prefijo del inglés
+//     "subtitles"; la alucinación que realmente tira Whisper en español es
+//     "Subtítulos realizados por la comunidad de Amara.org" -> "subtitul".
+//     Nunca se filtró. (app.py sí la filtraba, por eso sólo se veía acá.)
 bool es_alucinacion(const std::string& t) {
     if (t.empty() || t.size() < 8) return true;
 
-    std::string tl = t;
-    std::transform(tl.begin(), tl.end(), tl.begin(), ::tolower);
+    std::string tl = plegar(t);
 
-    // Patrones de alucinacion conocidos
-    static const char* PATRONES[] = {
-        // Artefactos de Whisper
-        "*", "[", "\xe2\x99\xaa", "subtitl",
-        // Repeticiones del prompt
+    // Con una sola aparición ya alcanza: artefactos del decoder, eco del
+    // initial_prompt y las frases de subtitulado que Whisper inventa cuando le
+    // entra ruido o música de fondo.
+    static const char* UNA_VEZ[] = {
+        "*", "[", "\xe2\x99\xaa",
+        "subtitl", "subtitul", "amara.org", "sous-titrage", "radio-canada",
+        "suscribite", "suscribete", "suscribanse",
         "otto otto", "otto guide", "ottoguide", "uade otto",
-        // Frases repetidas tipicas
-        "empresa", "gracias","suscribite","suscribete","suscribanse","suscribete a mi canal","eheh", "eh eh", 
-        "ehe", "mmm", "hmm", "ugh",
-        "radio-canada", "sous-titrage", "ende", "udrundr",
+        "eh eh",
         nullptr
     };
+    for (int i = 0; UNA_VEZ[i]; ++i)
+        if (tl.find(UNA_VEZ[i]) != std::string::npos) return true;
 
-    for (int i = 0; PATRONES[i]; ++i) {
-        std::string p = PATRONES[i];
-        // Para patrones cortos de 1 char usar find directo
-        // Para palabras: detectar repeticion (2+ veces) o match exacto
-        bool es_palabra = (p.size() > 2);
-        if (!es_palabra) {
-            if (tl.find(p) != std::string::npos) return true;
-        } else {
-            // Patrones de frase exacta (otto otto, otto guide, etc.)
-            bool es_frase = (p.find(' ') != std::string::npos || p == "ottoguide" || p == "subtitl");
-            if (es_frase) {
-                if (tl.find(p) != std::string::npos) return true;
-            } else {
-                // Palabras sueltas: alucinacion solo si aparecen 2+ veces
-                int count = 0;
-                size_t pos = 0;
-                while ((pos = tl.find(p, pos)) != std::string::npos) { ++count; ++pos; }
-                if (count >= 2) return true;
-            }
-        }
-    }
+    // Sólo sospechosas si se repiten: también aparecen en preguntas legítimas.
+    // Se cuentan como palabra entera (contar_palabra): con find() a secas
+    // "ende" matcheaba adentro de "entiende" y "depende", así que una pregunta
+    // como "¿de qué depende la beca? no entiendo" se descartaba como
+    // alucinación y nunca llegaba al modelo.
+    static const char* REPETIDAS[] = {
+        "empresa", "gracias", "eheh", "ehe", "mmm", "hmm", "ugh",
+        "ende", "udrundr",
+        nullptr
+    };
+    for (int i = 0; REPETIDAS[i]; ++i)
+        if (contar_palabra(tl, REPETIDAS[i]) >= 2) return true;
+
     return false;
 }
 
@@ -240,9 +417,15 @@ bool es_wake_word(const std::string& t) {
     return false;
 }
 
+// Recibe texto ya pasado por normalizar(). Se busca por palabra entera: con
+// find() a secas "chao" matcheaba adentro de cualquier cosa y, peor, "listo"
+// pelado convertía "¿está listo el edificio nuevo?" en una despedida.
 bool es_despedida(const std::string& t) {
-    for (auto& w : {"chau","chao","adios","hasta luego","gracias eso es todo","no mas preguntas","listo","hasta pronto", "chau otto","chao otto","adios otto","hasta luego otto", "gracias otto"})
-        if (t.find(w) != std::string::npos) return true;
+    for (auto& w : {"chau","chao","adios","hasta luego","hasta pronto",
+                    "gracias eso es todo","no mas preguntas",
+                    "chau otto","chao otto","adios otto","hasta luego otto",
+                    "gracias otto"})
+        if (contiene_palabra(t, w)) return true;
     return false;
 }
 
@@ -253,26 +436,32 @@ bool es_despedida(const std::string& t) {
 bool es_frase_salida(const std::string& texto) {
     if (texto.empty()) return false;
 
-    // STEP 1: Normalizar a minúsculas
-    std::string tl = texto;
-    std::transform(tl.begin(), tl.end(), tl.begin(), ::tolower);
+    // STEP 1: Minúsculas y sin acentos (plegar() ya cubre "adiós" -> "adios")
+    std::string tl = plegar(texto);
 
     // STEP 2: Palabras clave de salida (cobertura alta, ambigüedad baja)
+    //
+    // Acá estaban "ya" y "listo" pelados, y era un agujero grande: este filtro
+    // corre ANTES de todo, sobre la pregunta real, así que "¿ya están abiertas
+    // las inscripciones?" o "¿está listo el edificio?" hacían que Otto se
+    // despidiera en vez de contestar. Se quedan sólo con el nombre del robot
+    // ("listo otto", "ya otto"), que es inequívoco. Además ahora la búsqueda
+    // es por palabra entera: con find() a secas "ya" matcheaba adentro de
+    // "apoya", "incluya", "construya", "cuya"...
     static const char* SALIDAS[] = {
         // Despedidas muy cortas (lo que Whisper captura de hablantes rápidos)
-        "chao", "chau", "adios", "adiós", "bye",
+        "chao", "chau", "adios", "bye",
         // Despedidas formales
         "hasta luego", "hasta pronto", "nos vemos", "hasta la vista",
         // Con nombre del robot
         "gracias otto", "gracias ottoman", "listo otto", "ya otto",
-        // Variantes comunes
-        "listo", "ya", "chao otto", "chau otto", "adios otto",
+        "chao otto", "chau otto", "adios otto",
         nullptr
     };
 
     // STEP 3: Búsqueda directa con early exit
     for (int i = 0; SALIDAS[i]; ++i) {
-        if (tl.find(SALIDAS[i]) != std::string::npos)
+        if (contiene_palabra(tl, SALIDAS[i]))
             return true;
     }
 
@@ -737,7 +926,8 @@ std::string transcribir(whisper_context* ctx, const std::vector<int16_t>& pcm_i1
     params.print_realtime   = false;
     params.print_timestamps = false;
     params.no_context       = true;
-    params.initial_prompt   = WHISPER_PROMPT;
+    // Prompt distinto segun la pasada: ver WHISPER_PROMPT_WAKE / _PREGUNTA.
+    params.initial_prompt   = rapido ? WHISPER_PROMPT_WAKE : WHISPER_PROMPT_PREGUNTA;
     params.n_threads        = 4;
     if (!rapido) params.beam_search.beam_size = 3;
     params.no_speech_thold  = 0.4f;
@@ -1035,12 +1225,18 @@ int main(int argc, char const *argv[]) {
             // definición de la función) -- se confía en que Llama 3 8B
             // maneja bien preguntas raras/ambiguas por sí solo.
 
-            std::cout << C_YELLOW "[LLM]" C_RESET " Consultando: \"" << texto << "\"" << std::endl;
+            // Lo que se le manda al LLM lleva la sigla corregida (ver
+            // corregir_uade): hasta ahora se mandaba el texto crudo de Whisper,
+            // asi que si habia escrito "uate" o "u a de" el modelo no sabia de
+            // que universidad le hablaban. Se imprime la pregunta corregida, no
+            // la cruda, para que el log muestre lo que el modelo realmente vio.
+            std::string pregunta = corregir_uade(texto);
+            std::cout << C_YELLOW "[LLM]" C_RESET " Consultando: \"" << pregunta << "\"" << std::endl;
             estado = PROCESANDO;
             print_indicador(PROCESANDO);
 
             auto t_llm_start = std::chrono::steady_clock::now();
-            std::string respuesta = limpiar_para_voz(ollama_query(texto));
+            std::string respuesta = limpiar_para_voz(ollama_query(pregunta));
             double llm_secs = std::chrono::duration<double>(
                 std::chrono::steady_clock::now() - t_llm_start).count();
             std::cout << C_GRAY "[TIEMPO] LLM: " << llm_secs << "s" C_RESET << std::endl;

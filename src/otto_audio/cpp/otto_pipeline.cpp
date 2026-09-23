@@ -521,12 +521,35 @@ std::string ollama_query(const std::string& pregunta) {
 // Ingenieria Industrial asterisco...". Asi que no se le pide al modelo, se
 // limpia aca: es deterministico y no depende de que el modelo colabore.
 std::string limpiar_para_voz(const std::string& texto) {
+    // Primero los links markdown: "[texto](url)" -> "texto". El modelo los mete
+    // al dar mails o webs (visto el 2026-09-23: "[ingreso@uade.edu.ar]
+    // (mailto:ingreso@uade.edu.ar)"), y Piper leeria los corchetes y el
+    // "mailto" en voz alta.
+    std::string sin_links;
+    sin_links.reserve(texto.size());
+    for (size_t i = 0; i < texto.size(); ++i) {
+        if (texto[i] == '[') {
+            size_t cierre = texto.find(']', i);
+            if (cierre != std::string::npos) {
+                sin_links += texto.substr(i + 1, cierre - i - 1);
+                i = cierre;
+                // Si sigue un "(...)", es la URL del link: se descarta entera.
+                if (i + 1 < texto.size() && texto[i + 1] == '(') {
+                    size_t fin = texto.find(')', i + 1);
+                    if (fin != std::string::npos) i = fin;
+                }
+                continue;
+            }
+        }
+        sin_links += texto[i];
+    }
+
     std::string out;
-    out.reserve(texto.size());
+    out.reserve(sin_links.size());
 
     bool inicio_de_linea = true;
-    for (size_t i = 0; i < texto.size(); ++i) {
-        char c = texto[i];
+    for (size_t i = 0; i < sin_links.size(); ++i) {
+        char c = sin_links[i];
 
         // Saltos de linea -> espacio: es una sola tirada de voz, no un texto.
         if (c == '\n' || c == '\r') {
@@ -539,10 +562,11 @@ std::string limpiar_para_voz(const std::string& texto) {
         if (inicio_de_linea) {
             if (c == ' ' || c == '\t') continue;
             if (c == '*' || c == '-' || c == '+') {
-                if (i + 1 < texto.size() && (texto[i+1] == ' ' || texto[i+1] == '\t')) continue;
+                if (i + 1 < sin_links.size()
+                    && (sin_links[i+1] == ' ' || sin_links[i+1] == '\t')) continue;
             }
-            if (isdigit((unsigned char)c) && i + 1 < texto.size()
-                && (texto[i+1] == '.' || texto[i+1] == ')')) { ++i; continue; }
+            if (isdigit((unsigned char)c) && i + 1 < sin_links.size()
+                && (sin_links[i+1] == '.' || sin_links[i+1] == ')')) { ++i; continue; }
             inicio_de_linea = false;
         }
 

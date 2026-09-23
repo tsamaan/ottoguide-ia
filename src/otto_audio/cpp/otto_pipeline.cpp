@@ -478,7 +478,13 @@ std::string ollama_query(const std::string& pregunta) {
     size_t pos = 0;
     while ((pos = p.find('"', pos)) != std::string::npos) { p.replace(pos, 1, "\\\""); pos += 2; }
 
-    std::string body = "{\"model\":\"otto-llama3\",\"prompt\":\"" + p + "\",\"stream\":false,\"think\":false}";
+    // keep_alive:-1 => el modelo queda residente en la GPU para siempre. Sin
+    // esto Ollama lo descarga a los 5 minutos de inactividad, y la siguiente
+    // pregunta paga ~47s de recarga (4.7GB a la GPU) en vez de ~3s -- que es
+    // justo el caso de uso real (alguien pregunta, pasa un rato, otro
+    // pregunta). Medido el 2026-09-23: 51s en frío vs 3.7s en caliente.
+    std::string body = "{\"model\":\"otto-llama3\",\"prompt\":\"" + p
+                     + "\",\"stream\":false,\"think\":false,\"keep_alive\":-1}";
     std::string req  = "POST /api/generate HTTP/1.0\r\n"
                        "Host: 127.0.0.1\r\n"
                        "Content-Type: application/json\r\n"

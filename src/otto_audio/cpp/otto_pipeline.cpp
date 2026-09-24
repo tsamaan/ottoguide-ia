@@ -631,13 +631,24 @@ std::string seleccionar_rechazo_contextual(const std::string& texto) {
 
 // --- HTTP POST para Ollama --------------------------------------------------
 // Decodifica un valor JSON escapado ("\\n", "\\"", "\\\\") a texto plano.
+//
+// "\\n" se devuelve como salto de linea DE VERDAD, no como espacio. Esto parece
+// un detalle y era un bug de fondo: limpiar_para_voz() saca las viñetas y la
+// numeracion solo al principio de linea, pero este decodificador aplanaba los
+// saltos antes, asi que no habia principio de linea que detectar y esa parte
+// del sanitizador nunca se ejecutaba. Resultado: el modelo mandaba
+// "1. Revisa la web  2. Escribi a Bedelia" y Piper leia "uno punto",
+// "dos punto" en voz alta. Los saltos igual terminan como espacio: los aplana
+// limpiar_para_voz() al final, que es donde corresponde.
 static std::string desescapar_json(const std::string& src) {
     std::string out;
     out.reserve(src.size());
     for (size_t i = 0; i < src.size(); ++i) {
         if (src[i] != '\\' || i + 1 >= src.size()) { out += src[i]; continue; }
         switch (src[++i]) {
-            case 'n': case 'r': case 't': out += ' ';  break;
+            case 'n':                     out += '\n'; break;
+            case 'r':                     out += '\r'; break;
+            case 't':                     out += ' ';  break;
             case '"':                     out += '"';  break;
             case '\\':                    out += '\\'; break;
             default:                      out += src[i];
@@ -674,11 +685,21 @@ static std::string campo_response(const std::string& linea) {
 // de hecho es justo lo que se quiere -- el modelo sigue generando la oracion
 // siguiente mientras Otto dice la actual.
 //
-// @INPUT: pregunta; on_oracion = se invoca con cada oracion completa
-// @OUTPUT: la respuesta completa (para loguear), o "" si fallo la conexion
+// `max_oraciones` corta de raiz el problema de que el modelo no se calla. El
+// Modelfile le pide DOS oraciones y no obedece: llega siempre al tope de
+// num_predict y hay que truncarlo a mitad de palabra. Rogarle al prompt ya se
+// intento (ver Modelfile, 2026-09-23). Con streaming el consumidor decide, y es
+// una garantia y no un pedido: al llegar al limite se cierra el socket, Ollama
+// ve el cliente desconectado y deja de generar. Ademas ahorra tiempo, porque ya
+// no se esperan los tokens 50 a 100 que igual no se iban a decir.
+//
+// @INPUT: pregunta; on_oracion = se invoca con cada oracion completa;
+//         max_oraciones = cuantas se dicen antes de cortar
+// @OUTPUT: la respuesta completa dicha (para loguear), o "" si fallo la conexion
 std::string ollama_query_stream(
         const std::string& pregunta,
-        const std::function<void(const std::string&)>& on_oracion) {
+        const std::function<void(const std::string&)>& on_oracion,
+        int max_oraciones = 2) {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) return "";
 
@@ -718,10 +739,16 @@ std::string ollama_query_stream(
     // de escape para una respuesta sin puntuacion.
     const size_t MIN_ORACION = 40, MAX_ORACION = 220;
 
+    // `completa` se arma DENTRO de soltar(), no al recibir cada token: asi lo que
+    // se devuelve y se loguea es exactamente lo que Otto dijo, y no incluye la
+    // oracion a medias que quedo en el buffer cuando se corto la generacion.
+    int dichas = 0;
     auto soltar = [&]() {
         if (oracion.empty()) return;
         on_oracion(oracion);
+        completa += oracion;
         oracion.clear();
+        ++dichas;
     };
 
     while ((n = recv(sock, buf, sizeof(buf) - 1, 0)) > 0) {
@@ -737,16 +764,19 @@ std::string ollama_query_stream(
             pendiente.erase(0, nl + 1);
             std::string trozo = campo_response(linea);
             if (trozo.empty()) continue;
-            completa += trozo;
-            oracion  += trozo;
+            oracion += trozo;
             char ult = oracion.empty() ? 0 : oracion[oracion.size() - 1];
             bool fin_oracion = (ult == '.' || ult == '!' || ult == '?');
             if ((fin_oracion && oracion.size() >= MIN_ORACION) || oracion.size() >= MAX_ORACION)
                 soltar();
+            if (dichas >= max_oraciones) break;
         }
+        if (dichas >= max_oraciones) break;
     }
+    // Cerrar el socket con el modelo a medio generar es a proposito: es la
+    // senial para que Ollama abandone la generacion.
     close(sock);
-    soltar();   // lo que quedo sin punto final
+    if (dichas < max_oraciones) soltar();   // lo que quedo sin punto final
     return completa;
 }
 

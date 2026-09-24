@@ -11,6 +11,8 @@
 #include <atomic>
 #include <memory>
 #include <functional>
+#include <sstream>
+#include <cstdio>
 #include <cctype>
 #include <cmath>
 #include <cstring>
@@ -127,6 +129,11 @@ void print_indicador(State s) {
 #define WHISPER_PROMPT_PREGUNTA \
     "Conversación en la UADE, la Universidad Argentina de la Empresa. " \
     "Preguntas sobre carreras, campus e ingreso a UADE."
+// Contexto activo: el "que sabe" Otto, editable desde la web sin rebuildear el
+// modelo (ver ottohabla/scripts/otto_context.sh). Es un symlink al contexto
+// elegido. Si no existe, Otto contesta solo con lo que tiene el Modelfile, que
+// es exactamente el comportamiento anterior a esto.
+#define CONTEXT_ACTIVO "/home/unitree/Desktop/contextos_otto/activo.md"
 #define PIPER_BIN      "/home/unitree/piper/piper"
 #define PIPER_VOICE    "/home/unitree/piper/voices/es_MX-gevy-high.onnx"
 #define NET_IFACE      "eth0"
@@ -671,6 +678,83 @@ static std::string campo_response(const std::string& linea) {
     return "";
 }
 
+// Escapa un string para meterlo dentro de un JSON.
+//
+// Antes se escapaban SOLO las comillas, y alcanzaba de casualidad: la pregunta
+// venia de Whisper siempre en una sola linea. El contexto activo es un archivo
+// de varias lineas, y un \n crudo adentro de un string JSON es invalido -- el
+// pedido entero se lo rechazaria Ollama. Los bytes >= 0x80 (UTF-8) pasan tal
+// cual, que es JSON valido; solo hay que escapar los de control.
+static std::string escapar_json(const std::string& src) {
+    std::string out;
+    out.reserve(src.size() + 16);
+    for (unsigned char c : src) {
+        switch (c) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n";  break;
+            case '\r': out += "\\r";  break;
+            case '\t': out += "\\t";  break;
+            default:
+                if (c < 0x20) {
+                    char buf[8];
+                    snprintf(buf, sizeof(buf), "\\u%04x", c);
+                    out += buf;
+                } else {
+                    out += (char)c;
+                }
+        }
+    }
+    return out;
+}
+
+// --- Contexto activo --------------------------------------------------------
+// Se relee en CADA consulta a proposito: asi un cambio hecho desde la web se
+// aplica en la pregunta siguiente, sin reiniciar el pipeline ni rebuildear el
+// modelo. Son unos pocos KB de disco contra ~11s de generacion: el costo es
+// despreciable y la propiedad que compra (editar en vivo) es la razon de ser de
+// todo esto.
+std::string leer_contexto_activo() {
+    std::ifstream f(CONTEXT_ACTIVO);
+    if (!f) return "";
+    std::stringstream ss;
+    ss << f.rdbuf();
+    std::string ctx = ss.str();
+    while (!ctx.empty() && isspace((unsigned char)ctx.back())) ctx.pop_back();
+    size_t ini = ctx.find_first_not_of(" \t\n\r");
+    return (ini == std::string::npos) ? "" : ctx.substr(ini);
+}
+
+// Arma el prompt final. Sin contexto activo devuelve la pregunta pelada, o sea
+// exactamente el comportamiento anterior.
+//
+// El contexto va ANTES de la pregunta y no despues, y no es estetico: Ollama
+// cachea el prefijo del prompt (medido el 2026-09-23: prompt_eval de 0.2s con
+// el SYSTEM de 4-5k tokens ya cacheado). Con el contexto adelante, el prefijo
+// SYSTEM+contexto es identico entre consultas y se sigue cacheando; solo varia
+// la pregunta, que es lo ultimo. Al reves habria que reevaluar todo el contexto
+// en cada pregunta.
+// Arriba de esto el contexto empieza a comerse la ventana de 8192 tokens que
+// ya usa el SYSTEM del Modelfile (~4-5k), y el sintoma no es un error sino algo
+// peor: Otto empieza a "olvidarse" de sus propias reglas de formato y de
+// brevedad, y no hay nada en el log que lo explique. 8000 bytes son ~2k tokens,
+// que entran con margen. Se avisa en vez de truncar: truncar a la mitad de una
+// frase le daria datos incompletos como si fueran ciertos.
+#define CONTEXT_MAX_BYTES 8000
+
+std::string armar_prompt(const std::string& pregunta) {
+    std::string ctx = leer_contexto_activo();
+    if (ctx.empty()) return pregunta;
+    if (ctx.size() > CONTEXT_MAX_BYTES)
+        std::cout << C_GRAY "[CTX] OJO: el contexto activo tiene " << ctx.size()
+                  << " bytes (mas de " << CONTEXT_MAX_BYTES << "). Se usa igual, "
+                     "pero puede empezar a tapar las reglas del Modelfile."
+                  << C_RESET << std::endl;
+    return "DATOS DE UADE (son la fuente de verdad; si algo no esta aca, deci "
+           "que no lo sabes y derivá a Bedelía o ingreso@uade.edu.ar):\n"
+         + ctx + "\n\nPregunta: " + pregunta;
+}
+
 // --- Consulta a Ollama, en streaming ----------------------------------------
 // Antes se pedia con "stream":false y se esperaba la respuesta COMPLETA antes
 // de empezar a hablar. Medido el 2026-09-23: 100 tokens a 9.3 tok/s = 10.9s de
@@ -712,9 +796,7 @@ std::string ollama_query_stream(
     inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
     if (connect(sock, (sockaddr*)&addr, sizeof(addr)) < 0) { close(sock); return ""; }
 
-    std::string p = pregunta;
-    size_t pos = 0;
-    while ((pos = p.find('"', pos)) != std::string::npos) { p.replace(pos, 1, "\\\""); pos += 2; }
+    std::string p = escapar_json(pregunta);
 
     // keep_alive:-1 => el modelo queda residente en la GPU para siempre. Sin
     // esto Ollama lo descarga a los 5 minutos de inactividad, y la siguiente
@@ -1379,6 +1461,16 @@ int main(int argc, char const *argv[]) {
             // la cruda, para que el log muestre lo que el modelo realmente vio.
             std::string pregunta = corregir_uade(texto);
             std::cout << C_YELLOW "[LLM]" C_RESET " Consultando: \"" << pregunta << "\"" << std::endl;
+
+            // El contexto activo (si hay) se antepone a la pregunta. Se loguea
+            // solo el tamaño y no el contenido: son varios KB y taparian la
+            // traza entera en la terminal de la web.
+            std::string prompt = armar_prompt(pregunta);
+            if (prompt.size() != pregunta.size())
+                std::cout << C_GRAY "[CTX] contexto activo: "
+                          << (prompt.size() - pregunta.size()) << " bytes" C_RESET << std::endl;
+            else
+                std::cout << C_GRAY "[CTX] sin contexto activo" C_RESET << std::endl;
             estado = PROCESANDO;
             print_indicador(PROCESANDO);
 
@@ -1393,7 +1485,7 @@ int main(int argc, char const *argv[]) {
             };
 
             bool hablo = false;
-            std::string respuesta = ollama_query_stream(pregunta,
+            std::string respuesta = ollama_query_stream(prompt,
                 [&](const std::string& frase) {
                     std::string limpia = limpiar_para_voz(frase);
                     if (limpia.empty()) return;

@@ -129,11 +129,12 @@ void print_indicador(State s) {
 #define WHISPER_PROMPT_PREGUNTA \
     "Conversación en la UADE, la Universidad Argentina de la Empresa. " \
     "Preguntas sobre carreras, campus e ingreso a UADE."
-// Contexto activo: el "que sabe" Otto, editable desde la web sin rebuildear el
-// modelo (ver ottohabla/scripts/otto_context.sh). Es un symlink al contexto
-// elegido. Si no existe, Otto contesta solo con lo que tiene el Modelfile, que
-// es exactamente el comportamiento anterior a esto.
-#define CONTEXT_ACTIVO "/home/unitree/Desktop/contextos_otto/activo.md"
+// Contextos: el "que sabe" Otto, editable desde la web sin rebuildear el modelo
+// (ver ottohabla/scripts/otto_context.sh). activos.txt lista los nombres, uno
+// por linea, y aca se concatenan al vuelo. Si no hay ninguno, Otto contesta solo
+// con lo que trae el Modelfile: exactamente el comportamiento anterior a esto.
+#define CONTEXT_DIR    "/home/unitree/Desktop/contextos_otto"
+#define CONTEXT_LISTA  CONTEXT_DIR "/activos.txt"
 #define PIPER_BIN      "/home/unitree/piper/piper"
 #define PIPER_VOICE    "/home/unitree/piper/voices/es_MX-gevy-high.onnx"
 #define NET_IFACE      "eth0"
@@ -708,25 +709,65 @@ static std::string escapar_json(const std::string& src) {
     return out;
 }
 
-// --- Contexto activo --------------------------------------------------------
-// Se relee en CADA consulta a proposito: asi un cambio hecho desde la web se
+// --- Contextos activos ------------------------------------------------------
+// Se releen en CADA consulta a proposito: asi un cambio hecho desde la web se
 // aplica en la pregunta siguiente, sin reiniciar el pipeline ni rebuildear el
 // modelo. Son unos pocos KB de disco contra ~11s de generacion: el costo es
 // despreciable y la propiedad que compra (editar en vivo) es la razon de ser de
 // todo esto.
-std::string leer_contexto_activo() {
-    std::ifstream f(CONTEXT_ACTIVO);
-    if (!f) return "";
-    std::stringstream ss;
-    ss << f.rdbuf();
-    std::string ctx = ss.str();
-    while (!ctx.empty() && isspace((unsigned char)ctx.back())) ctx.pop_back();
-    size_t ini = ctx.find_first_not_of(" \t\n\r");
-    return (ini == std::string::npos) ? "" : ctx.substr(ini);
+//
+// Son VARIOS y no uno solo porque el conocimiento entero de UADE son ~4150
+// tokens de los 8192 de la ventana, y el resto del Modelfile se lleva ~2818.
+// Junto no queda lugar para conversar. Partido en temas, una visita general
+// activa "general"; una feria de ingreso activa "general" + "ingreso" y se
+// ahorra el catalogo de posgrados.
+std::string leer_contextos_activos() {
+    std::ifstream lista(CONTEXT_LISTA);
+    if (!lista) return "";
+
+    std::string texto, nombre;
+    while (std::getline(lista, nombre)) {
+        while (!nombre.empty() && isspace((unsigned char)nombre.back())) nombre.pop_back();
+        if (nombre.empty()) continue;
+        // El nombre ya viene validado por otto_context.sh y por app.py, pero
+        // este proceso lee el archivo directo del disco: si alguien lo edita a
+        // mano por SSH no hay ninguna validacion en el medio.
+        if (nombre.find('/') != std::string::npos || nombre.find("..") != std::string::npos) {
+            std::cout << C_GRAY "[CTX] nombre invalido en activos.txt, ignorado: "
+                      << nombre << C_RESET << std::endl;
+            continue;
+        }
+        std::ifstream f(std::string(CONTEXT_DIR) + "/" + nombre + ".md");
+        if (!f) {
+            std::cout << C_GRAY "[CTX] contexto activo que no existe: " << nombre
+                      << C_RESET << std::endl;
+            continue;
+        }
+        std::stringstream ss;
+        ss << f.rdbuf();
+        if (!texto.empty()) texto += "\n\n";
+        texto += ss.str();
+    }
+
+    while (!texto.empty() && isspace((unsigned char)texto.back())) texto.pop_back();
+    size_t ini = texto.find_first_not_of(" \t\n\r");
+    return (ini == std::string::npos) ? "" : texto.substr(ini);
 }
 
-// Arma el prompt final. Sin contexto activo devuelve la pregunta pelada, o sea
-// exactamente el comportamiento anterior.
+// Arriba de esto el contexto empieza a comerse la ventana de 8192 tokens que
+// comparte con el SYSTEM del Modelfile, y el sintoma no es un error sino algo
+// peor: Otto empieza a "olvidarse" de sus propias reglas de formato y de
+// brevedad, y no hay nada en el log que lo explique.
+//
+// El numero sale de la cuenta, no de una medicion: 8192 tokens de ventana,
+// menos ~2818 que se lleva hoy el Modelfile, menos la pregunta y los 100 tokens
+// de respuesta, dejan ~5100 tokens ~= 18000 bytes de espanol. 12000 avisa con
+// margen antes de llegar ahi. Si el Modelfile adelgaza (ver
+// ottoguide-ia/scripts/modelfile_a_contexto.py) este numero puede subir.
+#define CONTEXT_MAX_BYTES 12000
+
+// Arma el prompt final. Sin contextos activos devuelve la pregunta pelada, o
+// sea exactamente el comportamiento anterior.
 //
 // El contexto va ANTES de la pregunta y no despues, y no es estetico: Ollama
 // cachea el prefijo del prompt (medido el 2026-09-23: prompt_eval de 0.2s con
@@ -734,21 +775,13 @@ std::string leer_contexto_activo() {
 // SYSTEM+contexto es identico entre consultas y se sigue cacheando; solo varia
 // la pregunta, que es lo ultimo. Al reves habria que reevaluar todo el contexto
 // en cada pregunta.
-// Arriba de esto el contexto empieza a comerse la ventana de 8192 tokens que
-// ya usa el SYSTEM del Modelfile (~4-5k), y el sintoma no es un error sino algo
-// peor: Otto empieza a "olvidarse" de sus propias reglas de formato y de
-// brevedad, y no hay nada en el log que lo explique. 8000 bytes son ~2k tokens,
-// que entran con margen. Se avisa en vez de truncar: truncar a la mitad de una
-// frase le daria datos incompletos como si fueran ciertos.
-#define CONTEXT_MAX_BYTES 8000
-
 std::string armar_prompt(const std::string& pregunta) {
-    std::string ctx = leer_contexto_activo();
+    std::string ctx = leer_contextos_activos();
     if (ctx.empty()) return pregunta;
     if (ctx.size() > CONTEXT_MAX_BYTES)
-        std::cout << C_GRAY "[CTX] OJO: el contexto activo tiene " << ctx.size()
-                  << " bytes (mas de " << CONTEXT_MAX_BYTES << "). Se usa igual, "
-                     "pero puede empezar a tapar las reglas del Modelfile."
+        std::cout << C_GRAY "[CTX] OJO: los contextos activos suman " << ctx.size()
+                  << " bytes (mas de " << CONTEXT_MAX_BYTES << "). Se usan igual, "
+                     "pero pueden empezar a tapar las reglas del Modelfile."
                   << C_RESET << std::endl;
     return "DATOS DE UADE (son la fuente de verdad; si algo no esta aca, deci "
            "que no lo sabes y derivá a Bedelía o ingreso@uade.edu.ar):\n"

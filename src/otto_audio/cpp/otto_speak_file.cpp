@@ -6,6 +6,7 @@
 #include <unitree/robot/channel/channel_factory.hpp>
 #include <unitree/robot/g1/audio/g1_audio_client.hpp>
 #include "wav.hpp"
+#include "led_anim.hpp"
 
 #define CHUNK_SIZE 96000
 
@@ -49,6 +50,12 @@ int main(int argc, char const *argv[]) {
     size_t offset = 0, total = pcm.size();
     std::cout << "[INFO] Reproduciendo stream=" << sid << std::endl;
 
+    // El LED pulsa mientras suena. Este binario es el que usan la botonera
+    // (otto_preset.sh) y las respuestas de GPT (ask_gpt_and_speak.py), asi que
+    // con esto quedan cubiertos esos dos caminos. Se apaga solo al salir del
+    // bloque, incluso si algo falla en el medio.
+    LedHablando led(&client);
+
     while (offset < total) {
         size_t sz = std::min((size_t)CHUNK_SIZE, total - offset);
         std::vector<uint8_t> chunk(pcm.begin() + offset, pcm.begin() + offset + sz);
@@ -63,6 +70,7 @@ int main(int argc, char const *argv[]) {
     unitree::common::Sleep((int)dur + 2);
 
     ret = client.PlayStop("otto");
+    led.parar();
     std::cout << "[OK] PlayStop ret=" << ret << std::endl;
     return 0;
 }

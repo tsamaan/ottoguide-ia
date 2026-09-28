@@ -34,6 +34,7 @@
 #include "vad.hpp"
 #include "rms_vad.hpp"
 #include "silero_vad.hpp"
+#include "led_anim.hpp"
 
 // --- Colores ANSI -----------------------------------------------------------
 #define C_RESET  "\033[0m"
@@ -1008,6 +1009,11 @@ void reproducir_wav(const std::string& ruta) {
         std::cerr << "[TTS] Error WAV: " << ruta << std::endl; return;
     }
 
+    // El LED pulsa mientras dura el audio. Se crea DESPUES del chequeo del WAV
+    // para que el `return` de arriba no lo deje prendido, y se apaga solo al
+    // salir de la funcion (ver LedHablando, es RAII).
+    LedHablando led(g_audio);
+
     std::string sid = std::to_string(unitree::common::GetCurrentTimeMillisecond());
     size_t offset = 0, total = pcm.size();
     double dur = (double)total / (16000.0 * 2.0);
@@ -1082,9 +1088,14 @@ void otto_beep() {
 
     g_audio->SetVolume(100);
     std::string sid = std::to_string(unitree::common::GetCurrentTimeMillisecond());
-    g_audio->PlayStream("otto", sid, pcm);
-    usleep(400000);
-    g_audio->PlayStop("otto");
+    {
+        // El pip tambien es el parlante sonando, asi que tambien lleva LED. Va
+        // en un bloque propio para que se apague antes de restaurar el volumen.
+        LedHablando led(g_audio);
+        g_audio->PlayStream("otto", sid, pcm);
+        usleep(400000);
+        g_audio->PlayStop("otto");
+    }
     g_audio->SetVolume(SDK_VOLUME);
 
     // Limpiar buffer para que el beep no se transcriba como voz

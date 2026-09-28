@@ -10,7 +10,11 @@ find_package(unitree_sdk2 REQUIRED
 
 add_executable(otto_speak_file otto_speak_file.cpp)
 target_include_directories(otto_speak_file PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(otto_speak_file unitree_sdk2)
+# pthread: led_anim.hpp pulsa el LED desde un hilo aparte mientras suena el
+# audio. Sin esto linkea en algunos toolchains y falla en otros con
+# "undefined reference to pthread_create", que es de los errores mas confusos
+# que hay porque el codigo no menciona pthread por ningun lado.
+target_link_libraries(otto_speak_file unitree_sdk2 pthread)
 
 add_executable(asr_test asr_test.cpp)
 target_include_directories(asr_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

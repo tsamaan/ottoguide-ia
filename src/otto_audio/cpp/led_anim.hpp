@@ -23,16 +23,53 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <thread>
 
 #include <unitree/robot/g1/audio/g1_audio_client.hpp>
 
-// Color base del pulso. Es el mismo verde-azulado que usa la web (--accent),
-// para que el robot y la interfaz se lean como el mismo sistema.
+// Color base del PULSO (mientras habla). Es el verde-azulado que usa la web
+// (--accent), para que el robot y la interfaz se lean como el mismo sistema, y
+// se eligio distinto del azul de reposo a proposito: si fueran el mismo color,
+// hablar se veria apenas como un cambio de brillo y el punto de todo esto es
+// que se note de un vistazo.
 #ifndef LED_R
 #define LED_R 0
 #define LED_G 180
 #define LED_B 200
+#endif
+
+// Color de REPOSO: a donde vuelve el LED cuando Otto termina de hablar.
+//
+// No es (0,0,0) y esto importa: el G1 tiene una luz fija encendida cuando esta
+// tranquilo, y apagarla al terminar de hablar deja al robot "muerto" a la vista.
+//
+// LO IDEAL SERIA leer el color justo antes de empezar a hablar y restaurar ese.
+// NO SE PUEDE: el API de audio del SDK tiene 7 operaciones y para el LED existe
+// solo SET_RGB_LED (1010). Hay GET_VOLUME (1005) emparejado con SET_VOLUME
+// (1006), pero no hay ningun GET_RGB_LED en todo el SDK. El robot no puede
+// informar de que color esta su propio LED.
+//
+// Entonces se lo recuerda: ARCHIVO_ESTADO guarda el ultimo color que alguien
+// fijo a proposito, y ahi vuelve la animacion. Va en /tmp y eso es deliberado,
+// no pereza: el archivo tiene que morir con el arranque, porque despues de un
+// reinicio el firmware del robot pone su propio color y nuestra memoria seria
+// mentira. Sin archivo (primer audio despues de bootear) se usa el default.
+//
+// Queda un hueco que no se puede cerrar: si el propio robot cambia el LED por su
+// cuenta (bateria, error), no nos enteramos y restauramos un color viejo.
+#ifndef LED_ARCHIVO_ESTADO
+#define LED_ARCHIVO_ESTADO "/tmp/otto_led_actual"
+#endif
+
+// Orden de precedencia para saber a donde volver: lo que alguien fijo (archivo),
+// despues la variable de entorno (para probar sin recompilar), despues el
+// default compilado.
+#ifndef LED_REPOSO_R
+#define LED_REPOSO_R 0
+#define LED_REPOSO_G 0
+#define LED_REPOSO_B 255
 #endif
 
 // Periodo de una respiracion completa (oscuro -> brillante -> oscuro).
@@ -46,6 +83,50 @@
 #ifndef LED_PASO_MS
 #define LED_PASO_MS 60
 #endif
+
+// Deja el LED en su color de reposo. Suelta (y no solo un metodo de la clase)
+// porque tambien la necesita el camino de salida por senial, donde puede no
+// haber ningun LedHablando vivo a mano.
+// Parsea "R,G,B" con rango valido. Si viene mal escrito NO se toca nada: un
+// color raro por un typo es peor que el default, y no hay a quien reportarle el
+// error desde aca.
+inline bool led_parsear(const char* texto, uint8_t& r, uint8_t& g, uint8_t& b) {
+    if (!texto) return false;
+    int rr = 0, gg = 0, bb = 0;
+    if (std::sscanf(texto, "%d,%d,%d", &rr, &gg, &bb) != 3) return false;
+    if (rr < 0 || rr > 255 || gg < 0 || gg > 255 || bb < 0 || bb > 255) return false;
+    r = (uint8_t)rr; g = (uint8_t)gg; b = (uint8_t)bb;
+    return true;
+}
+
+inline void led_color_reposo(uint8_t& r, uint8_t& g, uint8_t& b) {
+    r = LED_REPOSO_R; g = LED_REPOSO_G; b = LED_REPOSO_B;
+    if (led_parsear(std::getenv("OTTO_LED_REPOSO"), r, g, b)) return;
+    std::FILE* f = std::fopen(LED_ARCHIVO_ESTADO, "r");
+    if (!f) return;
+    char linea[64] = {0};
+    if (std::fgets(linea, sizeof(linea), f)) led_parsear(linea, r, g, b);
+    std::fclose(f);
+}
+
+inline void led_a_reposo(unitree::robot::g1::AudioClient* audio) {
+    if (!audio) return;
+    uint8_t r, g, b;
+    led_color_reposo(r, g, b);
+    audio->LedControl(r, g, b);
+}
+
+// Fija un color Y lo recuerda, para que la animacion sepa a donde volver.
+// Esta es la funcion que tiene que usar cualquier cosa que quiera cambiar el
+// color de Otto a proposito; LedControl a secas se lo olvidaria.
+inline void led_fijar_reposo(unitree::robot::g1::AudioClient* audio,
+                             uint8_t r, uint8_t g, uint8_t b) {
+    if (audio) audio->LedControl(r, g, b);
+    std::FILE* f = std::fopen(LED_ARCHIVO_ESTADO, "w");
+    if (!f) return;
+    std::fprintf(f, "%d,%d,%d\n", (int)r, (int)g, (int)b);
+    std::fclose(f);
+}
 
 // Pulsa el LED mientras el objeto vive.
 //
@@ -71,9 +152,10 @@ public:
     void parar() {
         if (!corriendo_.exchange(false)) return;
         if (hilo_.joinable()) hilo_.join();
-        // Apagar DESPUES del join: si se apagara antes, el hilo podria meter un
-        // color mas entre medio y el LED quedaria prendido.
-        audio_->LedControl(0, 0, 0);
+        // Volver al reposo DESPUES del join: si se hiciera antes, el hilo
+        // podria meter un color mas entre medio y el LED quedaria en el
+        // ultimo paso del pulso en vez de en su estado normal.
+        led_a_reposo(audio_);
     }
 
 private:

@@ -13,6 +13,7 @@
 #include <functional>
 #include <sstream>
 #include <cstdio>
+#include <csignal>
 #include <cctype>
 #include <cmath>
 #include <cstring>
@@ -1282,8 +1283,20 @@ std::vector<int16_t> tomar_utterance(VoiceActivityDetector& vad, int ms_voz_mini
 }
 
 // --- Main + state machine ---------------------------------------------------
+// app.py detiene el pipeline con `kill` (SIGTERM). Sin esto, pararlo desde la
+// web mientras Otto habla dejaba el LED congelado en un paso del pulso, y el
+// proceso moria sin pasar por ninguna limpieza.
+//
+// El manejador solo apaga la bandera que ya gobierna el bucle principal: la
+// salida ocurre por el camino normal, asi corren los destructores y el
+// led_a_reposo() del final. Si justo esta reproduciendo, termina la frase en
+// curso y recien ahi sale -- cortar el audio a la mitad seria peor.
+static void al_recibir_senial(int) { running = false; }
+
 int main(int argc, char const *argv[]) {
     srand(time(nullptr));
+    std::signal(SIGINT, al_recibir_senial);
+    std::signal(SIGTERM, al_recibir_senial);
     std::cout << "[OTTO] Iniciando OttoGuide pipeline..." << std::endl;
 
     unitree::robot::ChannelFactory::Instance()->Init(0, NET_IFACE);
@@ -1562,6 +1575,9 @@ int main(int argc, char const *argv[]) {
     running = false;
     cap.join();
     whisper_free(wctx);
+    // Dejar el LED como estaba: si el proceso se va sin esto, el robot queda
+    // con el color del ultimo paso del pulso hasta que algo lo pise.
+    led_a_reposo(g_audio);
     std::cout << "[OTTO] Pipeline detenido." << std::endl;
     return 0;
 }

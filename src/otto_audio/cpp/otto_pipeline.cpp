@@ -244,6 +244,11 @@ std::string plegar(const std::string& s) {
     static const struct { const char* de; char a; } ACENTOS[] = {
         {"á",'a'}, {"é",'e'}, {"í",'i'}, {"ó",'o'}, {"ú",'u'}, {"ü",'u'}, {"ñ",'n'},
         {"Á",'a'}, {"É",'e'}, {"Í",'i'}, {"Ó",'o'}, {"Ú",'u'}, {"Ü",'u'}, {"Ñ",'n'},
+        // La apertura de interrogacion y exclamacion son PUNTUACION, pero
+        // es_letra() las toma por letras porque mira byte a byte y en UTF-8
+        // empiezan en 0xC2. Consecuencia: "¿gracias?" no matcheaba la palabra
+        // "gracias", porque el "¿" pegado rompia la frontera izquierda.
+        {"¿",' '}, {"¡",' '},
         {nullptr, 0}
     };
     std::string out;
@@ -364,6 +369,11 @@ std::string corregir_uade(const std::string& texto) {
 // que además de duplicar la lista de variantes corrompía palabras que la
 // contenían ("Guatemala" -> "Guademala"). Ahora la sigla la maneja
 // corregir_uade(), que trabaja por token.
+// Ultima transcripcion descartada en HIBERNACION, para poder detectar un
+// "Hola Otto" que el VAD partio en dos. Ver el uso, mas abajo.
+static std::string ultimo_descarte;
+static std::chrono::steady_clock::time_point ultimo_descarte_t;
+
 std::string normalizar(const std::string& raw) {
     std::string s = plegar(corregir_uade(raw));
 
@@ -378,7 +388,20 @@ std::string normalizar(const std::string& raw) {
         while ((pos = s.find(NOMBRE[i].de)) != std::string::npos)
             s.replace(pos, strlen(NOMBRE[i].de), NOMBRE[i].a);
     }
-    return s;
+
+    // Puntuacion a espacios. Whisper puntua lo que transcribe, y eso rompia las
+    // comparaciones de frase: cuando el VAD partia el wake word en dos, la
+    // concatenacion daba "hola. oto." y el patron "hola oto" no matcheaba por
+    // culpa del punto. Medido contra el log real del 2026-09-28, donde el caso
+    // aparece textual. Tambien ayuda a es_despedida_de_otto ("chau, otto!").
+    std::string limpio;
+    limpio.reserve(s.size());
+    for (size_t i = 0; i < s.size(); ++i) {
+        if (es_letra((unsigned char)s[i])) limpio += s[i];
+        else if (!limpio.empty() && limpio.back() != ' ') limpio += ' ';
+    }
+    while (!limpio.empty() && limpio.back() == ' ') limpio.pop_back();
+    return limpio;
 }
 
 // --- Filtro anti-alucinaciones ----------------------------------------------
@@ -1392,13 +1415,21 @@ int main(int argc, char const *argv[]) {
             auto chunk = tomar_utterance(*vad, 300, 500, 2500);
             if (chunk.empty()) continue;
 
-            // Si la captura llego casi al tope, la persona seguia hablando:
-            // nadie dice "Hola Otto" y sigue de largo sin pausa. No vale
-            // gastar Whisper en eso.
-            if (chunk.size() > (size_t)(SAMPLE_RATE * 2200 / 1000)) {
-                std::cout << C_GRAY "[◯] charla larga, no es wake word" C_RESET << std::endl;
-                continue;
-            }
+            // Captura larga: antes se DESCARTABA entera, con el argumento de
+            // que "nadie dice Hola Otto y sigue de largo sin pausa". Es falso:
+            // mucha gente dice "Hola Otto, ¿que carreras tiene UADE?" de un
+            // tiron, y eso pasa los 2.2s. En el log del 2026-09-28 aparecieron
+            // nueve "charla larga" seguidas mientras Teo intentaba activarlo:
+            // cada una pudo haber sido una activacion perdida.
+            //
+            // Ahora se recorta al principio en vez de tirarlo. Si la persona
+            // dijo el wake word, esta ahi -- y el costo de Whisper es el mismo
+            // que el de un chunk normal, porque lo que se transcribe mide igual.
+            const size_t MAX_WAKE = (size_t)(SAMPLE_RATE * 2200 / 1000);
+            bool era_larga = chunk.size() > MAX_WAKE;
+            if (era_larga) chunk.resize(MAX_WAKE);
+
+            double seg_chunk = (double)chunk.size() / SAMPLE_RATE;
 
             // rapido=true -> greedy: en HIBERNACION se transcribe todo lo que
             // se escucha, asi que la velocidad importa mas que la calidad.
@@ -1412,7 +1443,31 @@ int main(int argc, char const *argv[]) {
             // lista de patrones de alucinacion, asi que un "Hola Otto" que
             // Whisper transcribia como "Otto Otto" se descartaba y NUNCA
             // activaba. En el log aparecia como: [FILTRO] "Otto Otto".
-            if (es_wake_word(t)) {
+            // "Hola Otto" llega partido en dos con frecuencia: el VAD corta
+            // en la pausa natural entre las dos palabras y es_wake_word() nunca
+            // ve la frase junta. Visto textual en el log del 2026-09-28,
+            // mientras Teo intentaba activarlo:
+            //     [◯] descartado: "Hola."
+            //     [◯] descartado: "Oto."
+            // Se pega la transcripcion anterior con la actual antes de chequear.
+            // Se hace asi y no subiendo ms_silencio porque eso haria mas lento
+            // CADA ciclo de escucha, para arreglar un caso que es ocasional.
+            bool wake = es_wake_word(t);
+            if (!wake && !ultimo_descarte.empty()) {
+                double desde = std::chrono::duration<double>(
+                    std::chrono::steady_clock::now() - ultimo_descarte_t).count();
+                // Ventana corta: dos frases sueltas separadas por varios
+                // segundos no son un "Hola Otto" partido, son dos cosas
+                // distintas que casualmente decian "hola" y "otto".
+                if (desde < 3.0 && es_wake_word(ultimo_descarte + " " + t)) {
+                    wake = true;
+                    std::cout << C_GRAY "[◯] (el wake word venia partido en dos)"
+                              << C_RESET << std::endl;
+                }
+            }
+
+            if (wake) {
+                ultimo_descarte.clear();
                 float rms = calcular_rms(chunk);
                 std::cout << "\n" << C_CYAN "[MIC]" C_RESET " " << rms_bar(rms, RMS_THRESHOLD)
                           << " RMS:" << C_BOLD << (int)rms << C_RESET << std::endl;
@@ -1427,8 +1482,15 @@ int main(int argc, char const *argv[]) {
             // No era el wake word: una sola linea corta y seguimos. Antes se
             // imprimia la barra de RMS + "Transcribiendo..." + el texto entero
             // de cada charla ajena, y el log quedaba ilegible.
-            std::cout << C_GRAY "[◯] descartado: \"" << texto.substr(0, 45)
+            // Se loguea cuanto audio era y si venia recortado. Sin esto no se
+            // puede correlacionar por que algunas pasadas de Whisper tardan
+            // 300ms y otras 7000ms sobre chunks que no pueden pasar de 2.2s.
+            std::cout << C_GRAY "[◯] descartado (" << seg_chunk << "s"
+                      << (era_larga ? ", recortado" : "") << "): \""
+                      << texto.substr(0, 45)
                       << (texto.size() > 45 ? "...\"" : "\"") << C_RESET << std::endl;
+            ultimo_descarte = t;
+            ultimo_descarte_t = std::chrono::steady_clock::now();
         }
 
         // --- ESCUCHANDO: VAD para capturar utterance completa ---

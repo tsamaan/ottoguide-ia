@@ -177,11 +177,14 @@ const char* REPITE[] = {
 // Cierre tras responder -- reescritas el 2026-09-22: ya NO sigue
 // escuchando después de esto (ver ESCUCHANDO en main()), así que no
 // pueden sonar como si esperaran una respuesta inmediata sin wake word.
+// Repregunta despues de contestar. Antes decia "decime Hola Otto de nuevo",
+// porque cada pregunta exigia repetir el wake word. Ahora la sesion sigue
+// abierta: se pregunta y se escucha directo, sin volver a despertarlo.
 const char* CONSULTA[] = {
-    "Si tenes otra consulta, decime Hola Otto de nuevo.",
-    "Para otra pregunta, volve a decirme Hola Otto.",
-    "Cualquier otra duda, aca estoy, decime Hola Otto.",
-    "Si necesitas algo mas, llamame con Hola Otto.",
+    "Necesitas algo mas?",
+    "Te puedo ayudar con algo mas?",
+    "Alguna otra pregunta?",
+    "Queres saber algo mas?",
     nullptr
 };
 
@@ -1376,6 +1379,24 @@ int main(int argc, char const *argv[]) {
     sleep(CAPTURE_SECS);
 
     State estado = HIBERNACION;
+
+    // Preguntas contestadas en la sesion actual. NO hay tope: la sesion la
+    // cierra la persona con "chau otto", o el silencio si se fue sin decirlo.
+    // Se llego a poner un tope de 4 y se saco: con un cierre explicito en el
+    // diseño, cortar una conversacion que va bien porque llego a un numero es
+    // peor que el problema que evitaba.
+    //
+    // El contador sigue existiendo para saber si la sesion ya tuvo actividad:
+    // de eso depende si al cortarse por silencio se despide o se va callado.
+    int turnos = 0;
+
+    // Intentos seguidos que no llegaron a ser una pregunta (ruido que el VAD
+    // disparo, alucinaciones de Whisper, audio ininteligible). Con la sesion
+    // abierta hace falta un tope: en una sala ruidosa, tomar_utterance() nunca
+    // devuelve vacio, asi que el corte por silencio no llega nunca y Otto se
+    // quedaria escuchando ruido para siempre.
+    const int MAX_FALLIDOS = 3;
+    int fallidos = 0;
     std::cout << C_GREEN C_BOLD "\n╔════════════════════════════════════╗"
           << "\n║   OttoGuide listo en HIBERNACION   ║"
           << "\n║   Decí 'Hola Otto' para activar    ║"
@@ -1474,6 +1495,11 @@ int main(int argc, char const *argv[]) {
                 std::cout << C_WHITE "[STT]" C_RESET " \"" << C_BOLD << texto << C_RESET << "\"" << std::endl;
                 std::cout << C_GREEN C_BOLD "[OTTO] Wake word detectada -> ESCUCHANDO" C_RESET << std::endl;
                 estado = ESCUCHANDO;
+                turnos = 0;
+                fallidos = 0;
+                // El saludo lo dice el robot, NO el modelo: el Modelfile tiene
+                // prohibido saludar y presentarse justamente para que no se
+                // escuche dos veces seguidas.
                 otto_saludar();
                 otto_beep();
                 continue;
@@ -1511,7 +1537,11 @@ int main(int argc, char const *argv[]) {
             // El indicador ya lo imprimio el chequeo de cambio de estado arriba.
             auto chunk = tomar_utterance(*vad, 300, 500);
             if (chunk.empty()) {
-                // No dijo nada -> vuelve a dormir, sin drama.
+                // Nadie hablo en la ventana. Es el corte por silencio de la
+                // sesion: se despide en vez de quedarse mudo, para que se
+                // entienda que dejo de escuchar y no parezca que se colgo.
+                std::cout << C_GRAY "[OTTO] Silencio -> HIBERNACION" C_RESET << std::endl;
+                if (turnos > 0) otto_say(frase_aleatoria(DESPEDIDAS));
                 estado = HIBERNACION;
                 continue;
             }
@@ -1526,7 +1556,14 @@ int main(int argc, char const *argv[]) {
             double stt_secs = std::chrono::duration<double>(
                 std::chrono::steady_clock::now() - t_stt_start).count();
             std::cout << C_GRAY "[TIEMPO] STT: " << stt_secs << "s" C_RESET << std::endl;
-            if (texto.empty()) { estado = HIBERNACION; continue; }
+            if (texto.empty()) {
+                // Whisper no saco nada del audio. Mismo criterio que los demas
+                // caminos de error: cuenta como intento fallido y se sigue
+                // escuchando, en vez de cortar la sesion por un audio malo.
+                ++fallidos;
+                estado = (fallidos >= MAX_FALLIDOS) ? HIBERNACION : ESCUCHANDO;
+                continue;
+            }
 
             // Se imprime la transcripcion ANTES de cualquier filtro. Antes se
             // imprimia despues, y cuando un filtro se comia la pregunta el log
@@ -1545,28 +1582,59 @@ int main(int argc, char const *argv[]) {
             // preguntas. Con el nombre pedido el falso positivo es practicamente
             // imposible ("chau otto" no aparece dentro de una pregunta) y Otto
             // se sigue despidiendo lindo si alguien efectivamente se despide.
-            if (es_despedida_de_otto(normalizar(texto))) {
-                std::cout << C_GREEN "[OTTO] Despedida -> HIBERNACION" C_RESET << std::endl;
+            std::string norm = normalizar(texto);
+
+            // UNICO cierre explicito: "chau otto" (o adios/hasta luego + el
+            // nombre). Exige el nombre a proposito y esa es la regla del
+            // sistema: se abre con "hola otto" y se cierra con "chau otto",
+            // simetrico y sin ambiguedad.
+            //
+            // Un "no, gracias" en el medio NO cierra nada. Se probo al reves y
+            // se descarto: la persona puede decir "no" por muchos motivos en
+            // medio de una charla, y cortarle la sesion por eso es peor que
+            // dejarla abierta un rato de mas. Para irse hay que decirlo.
+            if (es_despedida_de_otto(norm)) {
+                std::cout << C_GREEN "[OTTO] Chau -> HIBERNACION" C_RESET << std::endl;
                 otto_say(frase_aleatoria(DESPEDIDAS));
                 estado = HIBERNACION;
                 continue;
             }
 
-            // FILTRO 1: Alucinaciones Whisper
+            // FILTRO 1: Alucinaciones Whisper. Es ruido, no la persona: no se
+            // le pide que repita (no dijo nada) pero se sigue escuchando.
             if (es_alucinacion(texto)) {
-                std::cout << C_GRAY "[FILTRO] alucinacion -> HIBERNACION" C_RESET << std::endl;
-                estado = HIBERNACION;
+                ++fallidos;
+                std::cout << C_GRAY "[FILTRO] alucinacion (" << fallidos << "/"
+                          << MAX_FALLIDOS << ")" C_RESET << std::endl;
+                estado = (fallidos >= MAX_FALLIDOS) ? HIBERNACION : ESCUCHANDO;
+                if (estado == HIBERNACION)
+                    std::cout << C_GRAY "[OTTO] demasiado ruido -> HIBERNACION" C_RESET << std::endl;
                 continue;
             }
 
             // Validación base (lenguaje español, longitud mínima)
             if (!es_texto_valido(texto)) {
-                std::cout << C_GRAY "[FILTRO] texto invalido para el LLM -> pido que repita" C_RESET << std::endl;
-                otto_say(frase_aleatoria(REPITE));
-                otto_beep();
-                estado = HIBERNACION;
+                ++fallidos;
+                std::cout << C_GRAY "[FILTRO] texto invalido para el LLM ("
+                          << fallidos << "/" << MAX_FALLIDOS << ")" C_RESET << std::endl;
+                // Antes decia "repeti por favor" y se iba a HIBERNACION: le
+                // pedia a la persona que repitiera y en el mismo acto dejaba de
+                // escuchar. Si se pide que repita, hay que quedarse escuchando.
+                if (fallidos >= MAX_FALLIDOS) {
+                    otto_say(frase_aleatoria(DESPEDIDAS));
+                    estado = HIBERNACION;
+                } else {
+                    otto_say(frase_aleatoria(REPITE));
+                    otto_beep();
+                    estado = ESCUCHANDO;
+                }
                 continue;
             }
+
+            // Llego una pregunta de verdad: se limpia la cuenta de intentos
+            // fallidos para que tres ruidos sueltos a lo largo de una charla
+            // larga no cierren una sesion que esta funcionando bien.
+            fallidos = 0;
 
             // El filtro semántico de vocabulario fijo (es_consulta_coherente)
             // sigue deshabilitado (ver nota del 2026-09-22 más arriba, en la
@@ -1623,14 +1691,22 @@ int main(int argc, char const *argv[]) {
                 otto_say(frase_aleatoria(REPITE));
                 otto_beep();
             } else {
-                otto_say(frase_aleatoria(CONSULTA));
+                ++turnos;
                 std::cout << "\n" << C_YELLOW "[LLM]" C_RESET " Respuesta completa: \""
                           << C_BOLD << respuesta << C_RESET << "\"" << std::endl;
                 std::cout << C_GRAY "[TIEMPO] total LLM+TTS: " << desde_inicio()
                           << "s" C_RESET << std::endl;
+
+                // La repregunta y el pip van DESPUES de la respuesta y solo si
+                // la sesion sigue: el pip significa "te escucho", y sonarlo
+                // cuando ya nos vamos a dormir seria mentirle a la persona.
+                otto_say(frase_aleatoria(CONSULTA));
                 otto_beep();
             }
-            estado = HIBERNACION; // siempre -- una pregunta por "Hola Otto"
+            // La sesion sigue abierta: se vuelve a ESCUCHANDO sin pedir "Hola
+            // Otto" otra vez. Antes aca habia un `estado = HIBERNACION`
+            // incondicional -- una pregunta por wake word.
+            estado = ESCUCHANDO;
         }
     }
 
